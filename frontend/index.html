@@ -2,31 +2,50 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Draft FC - Auto Battler</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: #1e272e; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; margin: 0; background: #1e272e; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
         .screen { display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; }
         .active { display: flex; }
-        
-        button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; background-color: #0fb9b1; border: none; color: white; border-radius: 5px; }
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; background-color: #0fb9b1; border: none; color: white; border-radius: 5px; font-weight: bold;}
         button:hover { background-color: #2bcbba; }
         input, select { padding: 10px; margin: 10px; font-size: 16px; border-radius: 5px; border: none; }
         
-        .pitch { width: 800px; height: 500px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; }
-        .half-pitch { width: 400px; height: 500px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; }
+        /* 매치 경기장 (가로) */
+        .pitch { width: 800px; height: 500px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; overflow: hidden; }
         
-        .player-node { width: 35px; height: 35px; border-radius: 50%; background: #eb3b5a; border: 2px solid white; position: absolute; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        /* ★ 드래프트 경기장 (세로형) */
+        .draft-pitch { width: 400px; height: 600px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);}
+        
+        .player-node { width: 35px; height: 35px; border-radius: 50%; background: #eb3b5a; border: 2px solid white; position: absolute; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 5; user-select: none;}
         .player-placed { background: #3867d6; cursor: default; }
         
-        #draft-popup { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; transition: transform 0.5s ease; border: 1px solid #0fb9b1; z-index: 10; }
+        #draft-popup { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 10px; transition: transform 0.5s ease; border: 2px solid #0fb9b1; z-index: 10; }
         .popup-minimized { transform: scale(0.6) translate(-20px, -20px); transform-origin: top left; }
+
+        /* 골 팝업 애니메이션 */
+        #goal-popup { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:80px; font-weight:900; color:gold; text-shadow:4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; z-index:100; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; pointer-events: none;}
+        @keyframes popIn { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+        /* ★ 경기장 라인 마킹 CSS */
+        .line-center { position:absolute; left:50%; top:0; bottom:0; border-left:3px solid rgba(255,255,255,0.7); z-index: 1;}
+        .circle-center { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); width:100px; height:100px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; z-index: 1;}
+        .box-penalty-left { position:absolute; left:0; top:20%; width:15%; height:60%; border:3px solid rgba(255,255,255,0.7); border-left:none; z-index: 1;}
+        .box-goal-left { position:absolute; left:0; top:35%; width:5%; height:30%; border:3px solid rgba(255,255,255,0.7); border-left:none; z-index: 1;}
+        .arc-left { position:absolute; left:15%; top:50%; transform:translate(-50%, -50%); width:60px; height:80px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%); z-index: 0;}
+        
+        .box-penalty-right { position:absolute; right:0; top:20%; width:15%; height:60%; border:3px solid rgba(255,255,255,0.7); border-right:none; z-index: 1;}
+        .box-goal-right { position:absolute; right:0; top:35%; width:5%; height:30%; border:3px solid rgba(255,255,255,0.7); border-right:none; z-index: 1;}
+        .arc-right { position:absolute; right:15%; top:50%; transform:translate(50%, -50%); width:60px; height:80px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); z-index: 0;}
+        
+        .goal-post-left { position:absolute; left:-6px; top:40%; width:6px; height:20%; background:white; z-index: 2;}
+        .goal-post-right { position:absolute; right:-6px; top:40%; width:6px; height:20%; background:white; z-index: 2;}
     </style>
 </head>
 <body>
 
     <div id="screen-main" class="screen active">
-        <h1>⚽ Draft FC</h1>
+        <h1 style="font-size: 50px;">⚽ Draft FC</h1>
         <button onclick="createRoom()">방 생성 (방장)</button>
         <div style="margin-top: 20px;">
             <input type="text" id="join-code" placeholder="입장 코드 6자리">
@@ -35,183 +54,119 @@
     </div>
 
     <div id="screen-lobby" class="screen">
-        <h2>대기방 (입장 코드: <span id="display-code" style="color: #0fb9b1;"></span>)</h2>
-        <!-- ★ 연결 상태를 알려주는 텍스트 추가 -->
+        <h2>대기방 (코드: <span id="display-code" style="color: #0fb9b1;"></span>)</h2>
         <h3 id="lobby-status" style="color: #f7b731; margin-bottom: 20px;">방 생성 중...</h3>
-        
         <div id="settings-container"></div>
-        <button id="btn-ready" onclick="readyToPlay()">준비 완료 (포메이션 선택)</button>
+        <button id="btn-ready" onclick="readyToPlay()">준비 완료</button>
     </div>
 
     <div id="screen-draft" class="screen">
         <h2>선수 드래프트 (<span id="draft-timer" style="color:#eb3b5a; font-size: 24px;"></span>초)</h2>
         <div id="draft-popup">
-            <h3 id="draft-player-name">선수 이름</h3>
-            <p id="draft-player-stats"></p>
+            <h2 id="draft-player-name" style="margin:0 0 10px 0;">선수 이름</h2>
+            <p id="draft-player-stats" style="margin:0; font-size:18px;"></p>
         </div>
-        <div class="half-pitch" id="draft-pitch"></div>
+        <div class="draft-pitch" id="draft-pitch"></div>
     </div>
 
     <div id="screen-match" class="screen">
-        <div style="background:#2f3640; padding:10px 30px; border-radius:10px; font-size:24px; font-weight:bold; margin-bottom:10px;">
-            <span style="color:#3867d6;">TEAM 1</span> <span id="score-display">0 : 0</span> <span style="color:#eb3b5a;">TEAM 2</span>
+        <div style="background:#2f3640; padding:10px 40px; border-radius:10px; font-size:28px; font-weight:bold; margin-bottom:10px;">
+            <span style="color:#3867d6;">TEAM 1</span> &nbsp;&nbsp;<span id="score-display">0 : 0</span>&nbsp;&nbsp; <span style="color:#eb3b5a;">TEAM 2</span>
         </div>
-        <h2><span id="match-clock">00:00</span> - 상태: <span id="match-event" style="color: #f7b731;">킥오프 대기</span></h2>
+        <h2><span id="match-clock">00:00</span> - <span id="match-event" style="color: #f7b731;">오픈 플레이</span></h2>
         
         <div class="pitch" id="match-pitch">
-            <div id="goal-popup" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:50px; font-weight:bold; color:gold; text-shadow:2px 2px 5px black; z-index:100;">GOAL!!!</div>
+            <div class="line-center"></div><div class="circle-center"></div>
+            <div class="box-penalty-left"></div><div class="box-goal-left"></div><div class="arc-left"></div><div class="goal-post-left"></div>
+            <div class="box-penalty-right"></div><div class="box-goal-right"></div><div class="arc-right"></div><div class="goal-post-right"></div>
+            
+            <div id="goal-popup">GOAL!!!</div>
         </div>
     </div>
 
     <div id="screen-halftime" class="screen">
-        <h2>하프타임! 드래그하여 진영을 재배치하세요 (<span id="halftime-timer" style="color:#f7b731;"></span>초)</h2>
-        <div class="pitch" id="halftime-pitch"></div>
+        <h2>하프타임! 선수를 드래그하여 서로 자리를 교체하세요 (<span id="halftime-timer" style="color:#f7b731;"></span>초)</h2>
+        <div class="pitch" id="halftime-pitch">
+            <div class="line-center"></div><div class="circle-center"></div>
+            <div class="box-penalty-left"></div><div class="box-penalty-right"></div>
+        </div>
     </div>
     
     <div id="screen-result" class="screen">
-        <h1 id="final-result-text" style="font-size: 60px;"></h1>
-        <button onclick="location.reload()">처음으로 돌아가기</button>
+        <h1 id="final-result-text" style="font-size: 70px;"></h1>
+        <button onclick="location.reload()" style="font-size:24px; padding: 20px 40px;">처음으로 돌아가기</button>
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        // ★ 중요: Render에 백엔드를 배포한 후 발급받은 주소로 변경하세요.
-        const socket = io('https://soccer-game-g9tc.onrender.com'); 
-
+        // ★ Render 서버 주소 필수 변경 구간
+        const socket = io('https://여기에-본인-렌더-주소.onrender.com'); 
+        
         const sfxKick = new Audio('https://assets.mixkit.co/active_storage/sfx/2105/2105-preview.mp3');
         const sfxWhistle = new Audio('https://assets.mixkit.co/active_storage/sfx/316/316-preview.mp3');
-        
-        // 사운드 볼륨 조절
-        sfxKick.volume = 0.5;
-        sfxWhistle.volume = 0.7;
+        sfxKick.volume = 0.5; sfxWhistle.volume = 0.7;
 
-        // 서버에서 보내는 사운드 재생 신호 수신
+        let myRoomCode = '', gameDB = {}, myFormation = [], currentDraftPlayer = null, timerInterval, isHost = false, myTeamId = 1;
+
+        // 화면 전환 시 사운드 락 해제를 위한 꼼수 (최초 1회 클릭 시 빈 소리 재생)
+        document.body.addEventListener('click', () => { sfxKick.play().then(()=>sfxKick.pause()).catch(()=>{}); }, {once: true});
+
         socket.on('playSound', (type) => {
-            if (type === 'kick') {
-                sfxKick.currentTime = 0; // 연속 재생을 위해 시간 초기화
-                sfxKick.play().catch(e => console.log("Audio play blocked by browser:", e));
-            } else if (type === 'whistle') {
-                sfxWhistle.currentTime = 0;
-                sfxWhistle.play().catch(e => console.log("Audio play blocked by browser:", e));
-            }
+            if (type === 'kick') { sfxKick.currentTime = 0; sfxKick.play().catch(()=>{}); } 
+            else if (type === 'whistle') { sfxWhistle.currentTime = 0; sfxWhistle.play().catch(()=>{}); }
         });
-        
-        let myRoomCode = '';
-        let gameDB = {};
-        let myFormation = [];
-        let currentDraftPlayer = null;
-        let timerInterval;
 
         function showScreen(id) {
             document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
             document.getElementById(id).classList.add('active');
         }
 
-        let isHost = false; // 방장 여부 저장 변수
+        function createRoom() { isHost = true; myTeamId = 1; socket.emit('createRoom'); }
+        function joinRoom() { isHost = false; myTeamId = 2; const code = document.getElementById('join-code').value.toUpperCase(); if(code) socket.emit('joinRoom', code); }
 
-        function createRoom() { 
-            isHost = true; // 방 생성 버튼을 누르면 방장
-            socket.emit('createRoom'); 
-        }
-        
-        function joinRoom() { 
-            isHost = false; // 입장 버튼을 누르면 참가자
-            const code = document.getElementById('join-code').value.toUpperCase();
-            if(code) socket.emit('joinRoom', code); 
-        }
-
-        // 방장 전용: 방 생성 완료
-        socket.on('roomCreated', (code, db) => { 
-            setupLobby(code, db); 
-            document.getElementById('lobby-status').innerText = '상대방의 입장을 기다리는 중... (코드를 공유하세요)';
-        });
-        
-        // 참가자 전용: 방 입장 완료
-        socket.on('roomJoined', (code, db) => { 
-            setupLobby(code, db); 
-            document.getElementById('lobby-status').innerText = '방에 입장했습니다! 방장이 설정을 마칠 때까지 기다려주세요.';
-        });
-
-        // 공통: 방에 두 명이 모두 모였을 때
-        socket.on('playerJoinedLobby', () => {
-            document.getElementById('lobby-status').innerText = '🔥 두 플레이어가 모두 모였습니다! 포메이션 선택 후 준비 완료를 누르세요.';
-        });
+        socket.on('roomCreated', (code, db) => { setupLobby(code, db); document.getElementById('lobby-status').innerText = '상대방의 입장을 기다리는 중...'; });
+        socket.on('roomJoined', (code, db) => { setupLobby(code, db); document.getElementById('lobby-status').innerText = '방에 입장했습니다! 방장이 설정을 마칠 때까지 기다려주세요.'; });
+        socket.on('playerJoinedLobby', () => { document.getElementById('lobby-status').innerText = '🔥 플레이어가 모였습니다! 포메이션을 선택하고 준비를 누르세요.'; });
 
         function setupLobby(code, db) {
-            myRoomCode = code;
-            gameDB = db;
-            document.getElementById('display-code').innerText = code;
+            myRoomCode = code; gameDB = db; document.getElementById('display-code').innerText = code;
+            const container = document.getElementById('settings-container'); container.innerHTML = '';
             
-            const container = document.getElementById('settings-container');
-            container.innerHTML = '';
-            
-            // ★ 방장(Host)에게만 제한시간 설정 드롭다운 표시
             if(isHost) {
                 container.innerHTML += '<h4>제한시간 설정 (방장 전용)</h4>';
-                const timerSelect = document.createElement('select');
-                timerSelect.id = 'timer-select';
-                gameDB.settings.draftTimers.forEach(t => {
-                    const opt = document.createElement('option');
-                    opt.value = t; opt.innerText = `${t}초`;
-                    timerSelect.appendChild(opt);
-                });
+                const timerSelect = document.createElement('select'); timerSelect.id = 'timer-select';
+                gameDB.settings.draftTimers.forEach(t => { const opt = document.createElement('option'); opt.value = t; opt.innerText = `${t}초`; timerSelect.appendChild(opt); });
                 container.appendChild(timerSelect);
-            } else {
-                container.innerHTML += '<p style="color:gray;">(제한시간 설정은 방장의 권한입니다)</p>';
             }
 
-            // 포메이션은 둘 다 각자 선택
             container.innerHTML += '<h4>내 포메이션 선택</h4>';
-            const formationSelect = document.createElement('select');
-            formationSelect.id = 'formation-select';
-            Object.keys(gameDB.formations).forEach(f => {
-                const opt = document.createElement('option');
-                opt.value = f; opt.innerText = f;
-                formationSelect.appendChild(opt);
-            });
+            const formationSelect = document.createElement('select'); formationSelect.id = 'formation-select';
+            Object.keys(gameDB.formations).forEach(f => { const opt = document.createElement('option'); opt.value = f; opt.innerText = f; formationSelect.appendChild(opt); });
             container.appendChild(formationSelect);
 
-            // 준비 버튼 초기화 (활성화)
-            const btn = document.getElementById('btn-ready');
-            btn.innerText = "준비 완료";
-            btn.disabled = false;
-            btn.style.background = '#0fb9b1';
-
+            const btn = document.getElementById('btn-ready'); btn.innerText = "준비 완료"; btn.disabled = false; btn.style.background = '#0fb9b1';
             showScreen('screen-lobby');
         }
 
         function readyToPlay() {
             const formationId = document.getElementById('formation-select').value;
-            // 방장일 경우에만 서버로 제한시간 변경 신호 전송
-            if(isHost) {
-                const timer = document.getElementById('timer-select').value;
-                socket.emit('setTimer', myRoomCode, timer);
-            }
+            if(isHost) socket.emit('setTimer', myRoomCode, document.getElementById('timer-select').value);
+            
             socket.emit('playerReady', myRoomCode, formationId);
             myFormation = gameDB.formations[formationId].positions;
-            // ★ 준비 완료를 누르면 버튼을 잠그고 상대방을 기다림 (광클 오류 방지)
-            const btn = document.getElementById('btn-ready');
-            btn.innerText = "준비 완료! (상대방 대기 중...)";
-            btn.disabled = true;
-            btn.style.background = 'gray';
+            
+            const btn = document.getElementById('btn-ready'); btn.innerText = "준비 완료! (대기 중)"; btn.disabled = true; btn.style.background = 'gray';
         }
 
-        // --- 드래프트 ---
+        // --- 드래프트 (세로형 구현) ---
         socket.on('startDraft', () => {
-            const pitch = document.getElementById('draft-pitch');
-            pitch.innerHTML = '';
-            
+            const pitch = document.getElementById('draft-pitch'); pitch.innerHTML = '';
             myFormation.forEach((pos, index) => {
                 const slot = document.createElement('div');
-                slot.className = 'player-node';
-                slot.id = `slot-${index}`;
-                
-                // ★ 270도 회전 효과 적용 (X와 Y 좌표 변환)
-                // pos.x(공격 방향)가 클수록 화면 위쪽(top 0%)으로 가도록 100에서 뺌
-                // pos.y(좌우 퍼짐)를 가로(left)로 그대로 매핑
+                slot.className = 'player-node'; slot.id = `slot-${index}`;
+                // ★ 수학적 변환: X가 10(수비)이면 top 90%(아래), X가 80(공격)이면 top 20%(위)
                 slot.style.left = pos.y + '%';
                 slot.style.top = (100 - pos.x) + '%';
-                
                 slot.innerText = pos.id;
                 slot.onclick = () => placePlayer(index, slot);
                 pitch.appendChild(slot);
@@ -221,28 +176,23 @@
 
         socket.on('draftPlayer', (data) => {
             clearInterval(timerInterval);
-            currentDraftPlayer = data.p1; 
+            currentDraftPlayer = isHost ? data.p1 : data.p2; 
             
             const popup = document.getElementById('draft-popup');
             popup.classList.remove('popup-minimized');
             document.getElementById('draft-player-name').innerText = currentDraftPlayer.name;
-            document.getElementById('draft-player-stats').innerText = 
-                `스피드: ${currentDraftPlayer.stats.spd} | 슈팅: ${currentDraftPlayer.stats.sht}`;
-            
+            document.getElementById('draft-player-stats').innerText = `스피드: ${currentDraftPlayer.stats.spd} | 슈팅: ${currentDraftPlayer.stats.sht}`;
             setTimeout(() => popup.classList.add('popup-minimized'), 2000);
 
-            let timeLeft = data.timeLimit;
-            document.getElementById('draft-timer').innerText = timeLeft;
+            let timeLeft = data.timeLimit; document.getElementById('draft-timer').innerText = timeLeft;
             timerInterval = setInterval(() => {
-                timeLeft--;
-                document.getElementById('draft-timer').innerText = timeLeft;
+                timeLeft--; document.getElementById('draft-timer').innerText = timeLeft;
                 if(timeLeft <= 0) clearInterval(timerInterval);
             }, 1000);
         });
 
         function placePlayer(slotId, slotElement) {
             if(!currentDraftPlayer || slotElement.classList.contains('player-placed')) return;
-            
             slotElement.innerText = currentDraftPlayer.name.substring(0, 3);
             slotElement.classList.add('player-placed');
             socket.emit('playerPlaced', myRoomCode, slotId, currentDraftPlayer);
@@ -250,93 +200,44 @@
         }
 
         socket.on('forceRandomPlacement', () => {
-            const emptySlots = Array.from(document.getElementById('draft-pitch').children)
-                                    .filter(el => !el.classList.contains('player-placed'));
-            if(emptySlots.length > 0) {
-                emptySlots[Math.floor(Math.random() * emptySlots.length)].click();
-            }
+            const emptySlots = Array.from(document.getElementById('draft-pitch').children).filter(el => !el.classList.contains('player-placed'));
+            if(emptySlots.length > 0) emptySlots[Math.floor(Math.random() * emptySlots.length)].click();
         });
 
-        // --- 매치 ---
+        // --- 매치 화면 ---
         socket.on('matchStarted', (matchState) => { 
             showScreen('screen-match'); 
             const pitch = document.getElementById('match-pitch');
-            pitch.innerHTML = ''; 
+            // 라인 UI 살려두고 동적인 말들만 지우기
+            pitch.querySelectorAll('.player-node, #match-ball').forEach(el => el.remove());
 
-            // 축구장 바닥 라인 그리기
-            pitch.innerHTML += `
-                <div style="position:absolute; left:50%; top:0; bottom:0; border-left:3px solid white; opacity: 0.5;"></div>
-                <div style="position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); width:100px; height:100px; border:3px solid white; border-radius:50%; opacity: 0.5;"></div>
-            `;
-
-            // 공 (Ball) 생성 (transition으로 부드러운 이동 효과 적용)
             const ballEl = document.createElement('div');
             ballEl.id = 'match-ball';
-            ballEl.style.cssText = `
-                width: 15px; height: 15px; background: white; border-radius: 50%; 
-                position: absolute; transform: translate(-50%, -50%); z-index: 10;
-                transition: left 0.1s linear, top 0.1s linear; 
-                box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-            `;
+            ballEl.style.cssText = `width: 14px; height: 14px; background: white; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 2px solid black;`;
             pitch.appendChild(ballEl);
 
-            // 양 팀 선수 생성
-            // 양 팀 선수 및 골키퍼 생성
             matchState.players.forEach(player => {
                 const el = document.createElement('div');
                 el.className = 'player-node';
                 el.id = `match-player-${player.team}-${player.id}`; 
                 el.style.transition = 'left 0.1s linear, top 0.1s linear';
+                el.style.left = player.x + '%'; el.style.top = player.y + '%';
                 
-                el.style.left = player.x + '%';
-                el.style.top = player.y + '%';
-                
-                // ★ 색상 구분: 팀1(파랑), 팀2(빨강), 골키퍼(노랑/초록 톤)
-                if (player.role === 'GK') {
-                    el.style.background = '#f39c12'; // 골키퍼는 눈에 띄는 주황/노랑색
-                    el.style.border = '2px solid white';
-                } else {
-                    el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a';
-                }
-                
-                // 능력치가 높으면 금색 테두리 (필드 플레이어만)
-                if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90)) {
-                    el.style.border = '2px solid #f1c40f'; 
-                }
+                if (player.role === 'GK') { el.style.background = '#f39c12'; el.style.border = '2px solid white'; } 
+                else { el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a'; }
+                if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90)) el.style.border = '2px solid #f1c40f'; 
 
                 el.innerText = player.name.substring(0, 3);
                 pitch.appendChild(el);
             });
         });
 
-        // 운동장 위에 선수 말을 만들어주는 헬퍼 함수
-        function createMatchPlayerNode(pitch, player, color) {
-            const el = document.createElement('div');
-            el.className = 'player-node';
-            // 나중에 오토배틀러 로직이 이 ID를 찾아 좌표를 움직이게 됩니다.
-            el.id = `match-player-${player.team}-${player.id}`; 
-            el.style.left = player.x + '%';
-            el.style.top = player.y + '%';
-            el.style.background = color;
-            
-            // 능력치에 따라 테두리 색상 강조 (예: 스피드가 90 이상이면 금색 테두리)
-            if(player.stats.spd >= 90 || player.stats.sht >= 90) {
-                el.style.border = '2px solid #f1c40f'; 
-            }
-
-            el.innerText = player.name.substring(0, 3);
-            pitch.appendChild(el);
-        }
-
-        // 0.1초마다 서버로부터 좌표를 받아와서 위치를 갱신
         socket.on('matchUpdate', (data) => {
-            const min = Math.floor(data.gameMinute);
-            const sec = Math.floor((data.gameMinute * 60) % 60);
-            document.getElementById('match-clock').innerText = 
-                `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            // ★ 초 단위 실시간 디스플레이 (MM:SS)
+            const min = Math.floor(data.gameSeconds / 60);
+            const sec = Math.floor(data.gameSeconds % 60);
+            document.getElementById('match-clock').innerText = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
             document.getElementById('match-event').innerText = data.event;
-            
-            // 스코어 업데이트
             document.getElementById('score-display').innerText = `${data.score.team1} : ${data.score.team2}`;
 
             const ball = document.getElementById('match-ball');
@@ -348,89 +249,59 @@
             });
         });
 
-        // 득점 알림 처리
         socket.on('goalScored', (data) => {
             const popup = document.getElementById('goal-popup');
             popup.innerText = `TEAM ${data.team} GOAL!!!`;
             popup.style.display = 'block';
-            setTimeout(() => { popup.style.display = 'none'; }, 2500);
+            
+            // 애니메이션 재시작 트릭
+            popup.style.animation = 'none'; popup.offsetHeight; popup.style.animation = null;
+            
+            setTimeout(() => { popup.style.display = 'none'; }, 2800);
         });
 
-        // 이벤트(프리킥 등) 알림 처리
-        socket.on('matchEventAlert', (eventName) => {
-            const popup = document.getElementById('goal-popup');
-            popup.innerText = eventName + "!";
-            popup.style.color = "#f7b731"; // 노란색 경고창 느낌
-            popup.style.display = 'block';
-            setTimeout(() => { 
-                popup.style.display = 'none'; 
-                popup.style.color = "gold"; // 다시 골 텍스트 색으로 복구
-            }, 1800);
-        });
-
-        // --- 하프타임 (드래그 앤 드롭) ---
+        // --- 하프타임 스왑(Swap) 로직 ---
         let draggedNode = null;
-
         socket.on('halfTimeStarted', (duration, playersData) => {
             showScreen('screen-halftime');
             const hPitch = document.getElementById('halftime-pitch');
-            hPitch.innerHTML = '';
+            hPitch.querySelectorAll('.player-node').forEach(el => el.remove());
 
-            // 내 팀이 1인지 2인지 확인 (임시로 양 팀 모두 드래그 가능하게 구현)
-            playersData.forEach(player => {
+            // 본인 팀 선수만 렌더링하고 드래그 가능하게
+            playersData.filter(p => p.team === myTeamId && p.role !== 'GK').forEach(player => {
                 const el = document.createElement('div');
                 el.className = 'player-node';
-                el.style.left = player.baseX + '%';
-                el.style.top = player.baseY + '%';
+                el.style.left = player.baseX + '%'; el.style.top = player.baseY + '%';
                 el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a';
                 el.innerText = player.name.substring(0, 3);
+                el.draggable = true; el.dataset.id = player.id; el.dataset.team = player.team;
+
+                el.addEventListener('dragstart', (e) => { draggedNode = el; e.dataTransfer.effectAllowed = "move"; });
                 
-                // HTML5 Drag & Drop API 적용
-                el.draggable = true;
-                el.dataset.id = player.id;
-                el.dataset.team = player.team;
-
-                el.addEventListener('dragstart', (e) => {
-                    draggedNode = el;
-                    e.dataTransfer.effectAllowed = "move";
+                // ★ 서로 스왑하기 위한 drop 이벤트
+                el.addEventListener('dragover', (e) => { e.preventDefault(); });
+                el.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    if(draggedNode && draggedNode !== el) {
+                        const draggedId = draggedNode.dataset.id;
+                        const targetId = el.dataset.id;
+                        // CSS 화면상 즉시 교체
+                        const tempLeft = draggedNode.style.left, tempTop = draggedNode.style.top;
+                        draggedNode.style.left = el.style.left; draggedNode.style.top = el.style.top;
+                        el.style.left = tempLeft; el.style.top = tempTop;
+                        // 서버로 스왑 신호 전송
+                        socket.emit('swapPlayers', myRoomCode, myTeamId, draggedId, targetId);
+                    }
                 });
-
                 hPitch.appendChild(el);
             });
 
-            // 운동장(pitch)에 드롭했을 때 좌표 이동
-            hPitch.addEventListener('dragover', (e) => { e.preventDefault(); });
-            hPitch.addEventListener('drop', (e) => {
-                e.preventDefault();
-                if(draggedNode) {
-                    // 마우스 드롭 좌표를 %로 변환
-                    const rect = hPitch.getBoundingClientRect();
-                    const x = ((e.clientX - rect.left) / rect.width) * 100;
-                    const y = ((e.clientY - rect.top) / rect.height) * 100;
-                    
-                    draggedNode.style.left = x + '%';
-                    draggedNode.style.top = y + '%';
-                    
-                    // 서버로 변경된 좌표 즉시 전송
-                    socket.emit('updatePositions', myRoomCode, [{
-                        id: parseInt(draggedNode.dataset.id),
-                        team: parseInt(draggedNode.dataset.team),
-                        x: x, y: y
-                    }]);
-                }
-            });
-
-            // 타이머
-            let timeLeft = duration;
-            document.getElementById('halftime-timer').innerText = timeLeft;
+            let timeLeft = duration; document.getElementById('halftime-timer').innerText = timeLeft;
             const tInt = setInterval(() => {
-                timeLeft--;
-                document.getElementById('halftime-timer').innerText = timeLeft;
+                timeLeft--; document.getElementById('halftime-timer').innerText = timeLeft;
                 if(timeLeft <= 0) clearInterval(tInt);
             }, 1000);
         });
-
-        socket.on('secondHalfStarted', () => { showScreen('screen-match'); });
 
         socket.on('matchEnded', (score) => {
             showScreen('screen-result');
