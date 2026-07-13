@@ -170,7 +170,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         if (state.isPaused) return; 
         state.ticks++;
 
-        // --- 1. 세트피스 로직 ---
         if (state.phase !== 'play') {
             if (state.phase === 'gk_hold' && state.gkHolder) {
                 state.ball.x = state.gkHolder.x + (state.gkHolder.team === 1 ? 1.5 : -1.5); 
@@ -250,7 +249,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             if (state.phase !== 'play' && state.phase !== 'gk_hold') { emitUpdate(roomCode, state); return; }
         }
 
-        // --- 2. 물리 연산 ---
         if (state.phase === 'play') {
             state.ball.x += state.ball.vx; state.ball.y += state.ball.vy;
             state.ball.vx *= 0.82; state.ball.vy *= 0.82; 
@@ -265,7 +263,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             }
         }
 
-        // --- 3. 오프사이드 라인 및 소유권, 볼 캐리어(드리블러) 확인 ---
         let t2Defenders = [...state.players].filter(p => p.team === 2).sort((a,b) => b.x - a.x); 
         let offsideLine1 = Math.max(50, state.ball.x); 
         if (t2Defenders.length > 1) offsideLine1 = Math.max(offsideLine1, t2Defenders[1].x);
@@ -277,7 +274,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         let distArr1 = [], distArr2 = [];
         state.players.forEach(p => {
             let dist = getDistance(p.x, p.y, state.ball.x, state.ball.y);
-            // ★ 압박 인수인계 (Zonal Pressing) - 멀어지면 포기함
             let strayDist = getDistance(p.x, p.y, p.baseX, p.baseY);
             let pressScore = dist;
             if (strayDist > 10) pressScore += (strayDist - 10) * 3; 
@@ -296,10 +292,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         distArr1.sort((a,b) => a.pressScore - b.pressScore); 
         distArr2.sort((a,b) => a.pressScore - b.pressScore);
 
-        // ★ 볼 캐리어(드리블 중인 아군) 색출
         let ballCarrier = state.players.find(b => b.team === attTeam && getDistance(b.x, b.y, state.ball.x, state.ball.y) < 5);
 
-        // --- 4. 변칙적 오프더볼 (지원 & 침투) 및 스마트 수비 AI ---
         state.players.forEach(p => {
             if (p.cooldown > 0) p.cooldown--;
             let targetX = p.baseX, targetY = p.baseY;
@@ -310,7 +304,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             let rankObj = myDistArr.find(obj => obj.p === p);
             let rank = rankObj ? myDistArr.indexOf(rankObj) : 999;
             let distToBall = rankObj ? rankObj.dist : 999;
-            let strayDist = rankObj ? rankObj.strayDist : 0;
             let isFinalThirdDef = getDistance(state.ball.x, state.ball.y, ownGoalX, 50) < 35;
 
             let isPressing = false;
@@ -320,15 +313,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 else { targetX = p.baseX; targetY = p.baseY; isPressing = false; }
             } 
             else {
-                // ★ 압박 인수인계 확립 (멀어지면 제자리 복귀)
+                // ★ 교착 상태(Deadlock) 해결: 1순위는 무조건 압박 (멀어지면 이미 pressScore가 강등되어 자연스레 교체됨)
                 if (p.role !== 'GK') {
-                    if (isFinalThirdDef) {
-                        if (rank === 0) isPressing = true;
-                        else if (rank === 1 && distToBall < 15) isPressing = true;
-                    } else {
-                        // 자기 자리에서 15 이상 안 벗어난 1순위 수비수만 압박
-                        if (rank === 0 && strayDist < 15) isPressing = true;
-                    }
+                    if (rank === 0) isPressing = true;
+                    else if (rank === 1 && isFinalThirdDef && distToBall < 15) isPressing = true;
                 }
 
                 if (p.role === 'GK') {
@@ -338,37 +326,24 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 else if (isPressing) { targetX = state.ball.x; targetY = state.ball.y; } 
                 else if (attTeam === p.team) {
                     let attackVariant = Math.sin(state.ticks / 30 + p.baseY); 
-                    
-                    // ★ 유기적 오프더볼 (동료가 공을 잡았을 때)
                     if (ballCarrier && p.id !== ballCarrier.id) {
                         let distToCarrier = getDistance(p.x, p.y, ballCarrier.x, ballCarrier.y);
                         if (p.role === 'FW') { 
-                            // 침투 (Penetration): 오프사이드 라인에 걸치다가 빈 공간으로 스프린트
                             let offLine = (p.team === 1) ? offsideLine1 : offsideLine2;
                             targetX = offLine - (dir * 1.5);
-                            if (distToCarrier < 35) targetX += (dir * 6); // 공이 근처면 더 깊숙이 파고듦
+                            if (distToCarrier < 35) targetX += (dir * 6); 
                             else if (Math.random() < 0.1) targetX += (dir * 4); 
-                            
                             targetX = Math.max(12, Math.min(88, targetX));
                             targetY = p.baseY + attackVariant * 15; 
                         } 
                         else if (p.role === 'MF') { 
-                            // 받아주기 (Support): 너무 멀면 다가가서 패스길을 열어줌
                             if (distToCarrier > 20 && distToCarrier < 45) {
-                                targetX = ballCarrier.x - (dir * 5); 
-                                targetY = ballCarrier.y + (p.baseY > 50 ? 12 : -12);
-                            } else {
-                                targetX = Math.max(35, Math.min(65, state.ball.x + (dir * 12))); 
-                                targetY = p.baseY + attackVariant * 15; 
-                            }
+                                targetX = ballCarrier.x - (dir * 5); targetY = ballCarrier.y + (p.baseY > 50 ? 12 : -12);
+                            } else { targetX = Math.max(35, Math.min(65, state.ball.x + (dir * 12))); targetY = p.baseY + attackVariant * 15; }
                         } 
-                        else if (p.role === 'DF') { 
-                            targetX = Math.max(20, Math.min(80, state.ball.x - (dir * 15))); 
-                            targetY = p.baseY + attackVariant * 5; 
-                        }
+                        else if (p.role === 'DF') { targetX = Math.max(20, Math.min(80, state.ball.x - (dir * 15))); targetY = p.baseY + attackVariant * 5; }
                     } 
                     else {
-                        // 기본 전진
                         if (p.role === 'DF') { targetX = Math.max(25, Math.min(75, state.ball.x - (dir * 18))); targetY = p.baseY + attackVariant * 5; } 
                         else if (p.role === 'MF') { targetX = Math.max(35, Math.min(65, state.ball.x + (dir * 12))); targetY = p.baseY + attackVariant * 15; } 
                         else if (p.role === 'FW') { targetX = (p.team === 1) ? 88 : 12; targetY = p.baseY + attackVariant * 15; }
@@ -411,7 +386,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 p.y += ((targetY - p.y) / distToTarget) * moveSpeed;
             }
 
-            // --- 5. 터치 및 패스/슛 스마트 판단 ---
             let touchRadius = p.role === 'GK' ? 2.7 : 2;   
             let distToBallAct = getDistance(p.x, p.y, state.ball.x, state.ball.y);
 
@@ -513,14 +487,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (isOffside) score -= 150;   
                             if (dist < 5 || dist > 60) score -= 100; 
                             
-                            // ★ 억지 드리블 방지: 앞에 적이 있으면 백패스, 횡패스 점수를 높여줌
                             if (enemyAhead && forwardDist < 5) score += 60; 
 
                             if (score > maxScore) { maxScore = score; bestMate = m; }
                         }
                     });
 
-                    // ★ 드리블 빈도 감소: 점수 허들을 대폭 낮춰서 패스를 아주 자주 시도하게 만듦
                     if ((enemyAhead || maxScore > -40) && bestMate) {
                         let receiverIsOffside = false;
                         if (p.team === 1 && bestMate.x > offsideLine1) receiverIsOffside = true;
@@ -551,22 +523,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         p.cooldown = 10; 
                     } 
                     else {
-                        // ★ 180도 꺾기 방지: 현재 공의 Y방향 관성을 유지
                         let currentVySign = state.ball.vy >= 0 ? 1 : -1;
                         let dodgeY = currentVySign * 1.5; 
                         if (Math.abs(state.ball.vy) < 0.2) dodgeY = (p.y > 50) ? -1.5 : 1.5;
 
                         if (enemyAhead) { 
-                            // 적이 막고 있으면 대각선 전방으로 살짝 비켜나감
-                            state.ball.vx = dir * 0.8; 
-                            state.ball.vy = dodgeY * 1.2; 
-                        } 
-                        else { 
-                            // 치고 달리기
-                            state.ball.vx = dir * 1.7; 
-                            state.ball.vy = dodgeY * 0.5; 
+                            state.ball.vx = dir * 0.8; state.ball.vy = dodgeY * 1.2; 
+                        } else { 
+                            state.ball.vx = dir * 1.7; state.ball.vy = dodgeY * 0.5; 
                         }
-                        p.cooldown = 4; // 드리블 터치 간격을 살짝 늘려 자연스럽게
+                        p.cooldown = 4; 
                     }
                 }
             }
