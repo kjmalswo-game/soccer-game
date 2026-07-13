@@ -74,6 +74,24 @@
     <script>
         // ★ 중요: Render에 백엔드를 배포한 후 발급받은 주소로 변경하세요.
         const socket = io('https://soccer-game-g9tc.onrender.com'); 
+
+        const sfxKick = new Audio('https://assets.mixkit.co/active_storage/sfx/2105/2105-preview.mp3');
+        const sfxWhistle = new Audio('https://assets.mixkit.co/active_storage/sfx/316/316-preview.mp3');
+        
+        // 사운드 볼륨 조절
+        sfxKick.volume = 0.5;
+        sfxWhistle.volume = 0.7;
+
+        // 서버에서 보내는 사운드 재생 신호 수신
+        socket.on('playSound', (type) => {
+            if (type === 'kick') {
+                sfxKick.currentTime = 0; // 연속 재생을 위해 시간 초기화
+                sfxKick.play().catch(e => console.log("Audio play blocked by browser:", e));
+            } else if (type === 'whistle') {
+                sfxWhistle.currentTime = 0;
+                sfxWhistle.play().catch(e => console.log("Audio play blocked by browser:", e));
+            }
+        });
         
         let myRoomCode = '';
         let gameDB = {};
