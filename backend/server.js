@@ -99,26 +99,28 @@ io.on('connection', (socket) => {
     });
 
     // --- 헬퍼 함수: 두 점 사이의 거리 계산 ---
-    function getDistance(x1, y1, x2, y2) {
-        return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+    // --- 헬퍼 함수 모음 ---
+    function getDistance(x1, y1, x2, y2) { return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2); }
+    
+    // 포지션 ID로 역할군 분류
+    function getRole(posId) {
+        if (!posId) return 'MF';
+        if (posId.includes('B')) return 'DF'; // CB, LB, RB, LWB, RWB
+        if (posId.includes('T') || posId.includes('W') || posId === 'CF') return 'FW'; // ST, LW, RW, CF
+        return 'MF'; // CM, CDM, CAM, LM, RM
     }
 
-    // 킥오프 위치로 초기화하는 함수
     function resetPositions(state, kickoffTeam) {
         state.ball = { x: 50, y: 50, vx: 0, vy: 0 };
-        state.players.forEach(p => {
-            p.x = p.baseX;
-            p.y = p.baseY;
-        });
-        // 킥오프하는 팀의 공격수 한 명을 공 바로 앞으로 배치
-        const striker = state.players.find(p => p.team === kickoffTeam);
+        state.players.forEach(p => { p.x = p.baseX; p.y = p.baseY; });
+        const striker = state.players.find(p => p.team === kickoffTeam && p.role === 'FW');
         if (striker) { striker.x = 50; striker.y = 51; }
     }
 
     function startMatchPhase(roomCode) {
         const room = rooms[roomCode];
         room.state = 'match';
-        room.code = roomCode; // 내부 참조용
+        room.code = roomCode; 
         
         const playerIds = Object.keys(room.players);
         const p1Data = room.players[playerIds[0]];
@@ -126,29 +128,38 @@ io.on('connection', (socket) => {
         const p1Formation = db.formations[p1Data.formation].positions;
         const p2Formation = db.formations[p2Data.formation].positions;
 
+        // ★ 골키퍼 기본 능력치 설정
+        const gkStats = { spd: 80, sht: 85, pas: 60 };
+
         room.matchState = {
-            ticks: 0,
-            half: 1, // 1: 전반, 2: 후반
-            score: { team1: 0, team2: 0 },
-            isPaused: false, // 골이나 이벤트 발생 시 물리연산 일시정지
+            ticks: 0, half: 1, score: { team1: 0, team2: 0 }, isPaused: false,
             ball: { x: 50, y: 50, vx: 0, vy: 0 },
             players: [
+                // 팀 1 필드 플레이어
                 ...p1Data.team.map((t, idx) => {
                     const pos = p1Formation[t.slot];
-                    return { ...t.player, team: 1, slotIdx: idx, x: pos.x / 2, y: pos.y, baseX: pos.x / 2, baseY: pos.y };
+                    return { ...t.player, team: 1, role: getRole(pos.id), slotIdx: idx, x: pos.x / 2, y: pos.y, baseX: pos.x / 2, baseY: pos.y };
                 }),
+                // 팀 1 골키퍼 추가
+                { id: 'gk1', name: 'GK', team: 1, role: 'GK', x: 2, y: 50, baseX: 2, baseY: 50, stats: gkStats },
+                
+                // 팀 2 필드 플레이어
                 ...p2Data.team.map((t, idx) => {
                     const pos = p2Formation[t.slot];
-                    return { ...t.player, team: 2, slotIdx: idx, x: 100 - (pos.x / 2), y: 100 - pos.y, baseX: 100 - (pos.x / 2), baseY: 100 - pos.y };
-                })
+                    return { ...t.player, team: 2, role: getRole(pos.id), slotIdx: idx, x: 100 - (pos.x / 2), y: 100 - pos.y, baseX: 100 - (pos.x / 2), baseY: 100 - pos.y };
+                }),
+                // 팀 2 골키퍼 추가
+                { id: 'gk2', name: 'GK', team: 2, role: 'GK', x: 98, y: 50, baseX: 98, baseY: 50, stats: gkStats }
             ]
         };
 
+        // 매치 시작 및 킥오프 휘슬 소리 재생
         io.to(roomCode).emit('matchStarted', room.matchState);
+        io.to(roomCode).emit('playSound', 'whistle');
 
         room.matchInterval = setInterval(() => {
             const state = room.matchState;
-            if (state.isPaused) return; // 일시 정지 중이면 연산 스킵
+            if (state.isPaused) return; 
 
             state.ticks++;
 
@@ -158,19 +169,19 @@ io.on('connection', (socket) => {
             state.ball.vx *= 0.85; 
             state.ball.vy *= 0.85;
             
-            // ★ 득점 판정 (Y좌표 40~60 사이를 골대로 간주)
+            // 득점 판정
             if (state.ball.x <= 2) {
-                if (state.ball.y >= 40 && state.ball.y <= 60) handleGoal(room, 2); // 팀2 득점
-                else state.ball.vx *= -1; // 골대 밖이면 튕김 (아웃 방지)
+                if (state.ball.y >= 40 && state.ball.y <= 60) handleGoal(room, 2); 
+                else state.ball.vx *= -1; 
             } else if (state.ball.x >= 98) {
-                if (state.ball.y >= 40 && state.ball.y <= 60) handleGoal(room, 1); // 팀1 득점
+                if (state.ball.y >= 40 && state.ball.y <= 60) handleGoal(room, 1); 
                 else state.ball.vx *= -1;
             }
             if (state.ball.y <= 2 || state.ball.y >= 98) state.ball.vy *= -1;
 
-            if (state.isPaused) return; // 골 처리로 일시정지 되었다면 아래 이동 연산 스킵
+            if (state.isPaused) return; 
 
-            // [B] A.I 거리 계산 및 가장 가까운 선수 찾기
+            // [B] 공과 가장 가까운 선수 찾기 (팀별 소유권 계산용)
             let minDist1 = Infinity, minDist2 = Infinity;
             let closest1 = null, closest2 = null;
 
@@ -180,84 +191,119 @@ io.on('connection', (socket) => {
                 if (p.team === 2 && dist < minDist2) { minDist2 = dist; closest2 = p; }
             });
 
-            // [C] 선수 이동 및 [D] 슈팅/패스 로직 (이전과 동일)
+            // 현재 공에 더 가까운 팀 (공격권)
+            const attackingTeam = minDist1 < minDist2 ? 1 : 2;
+
+            // [C] 포지션별 고유 A.I 로직
             state.players.forEach(p => {
                 let targetX = p.baseX, targetY = p.baseY;
-                if (p === closest1 || p === closest2) {
+                
+                if (p.role === 'GK') {
+                    // ★ 골키퍼 A.I: 골대(Y: 50)를 중심으로 상하로만 움직이며 슛 방어
+                    targetX = p.baseX;
+                    // 공이 페널티 박스 근처(우리 진영 30% 이내)로 오면 공의 Y축을 따라다님
+                    if ((p.team === 1 && state.ball.x < 30) || (p.team === 2 && state.ball.x > 70)) {
+                        targetY = Math.max(40, Math.min(60, state.ball.y));
+                    } else {
+                        targetY = 50; // 평소엔 정중앙 대기
+                    }
+                } 
+                else if (p === closest1 || p === closest2) {
+                    // ★ 각 팀에서 가장 공과 가까운 1명은 무조건 공을 쫓아감
                     targetX = state.ball.x; targetY = state.ball.y;
-                } else {
-                    let lineShift = (state.ball.x - 50) * 0.3;
-                    targetX = Math.max(5, Math.min(95, p.baseX + lineShift));
+                } 
+                else {
+                    // ★ 역할군(Role)별 전술적 움직임
+                    let dir = (p.team === 1) ? 1 : -1;
+                    
+                    if (p.role === 'DF') {
+                        // 수비수: 공이 있는 위치에 맞춰 라인을 유지하고 골대 앞 공간 차단
+                        let lineShift = (state.ball.x - 50) * 0.2;
+                        targetX = Math.max(10, Math.min(90, p.baseX + lineShift));
+                        targetY = p.baseY + (state.ball.y - 50) * 0.1;
+                    } 
+                    else if (p.role === 'MF') {
+                        // 미드필더: 공수를 오가며 패스 길 확보
+                        let lineShift = (state.ball.x - 50) * 0.4;
+                        targetX = p.baseX + lineShift;
+                        targetY = p.baseY + (state.ball.y - 50) * 0.2;
+                    } 
+                    else if (p.role === 'FW') {
+                        // 공격수: 우리 팀이 공을 잡으면 전방 침투, 뺏기면 제자리 대기
+                        let runForward = (attackingTeam === p.team) ? 15 * dir : 0;
+                        targetX = Math.max(5, Math.min(95, p.baseX + (state.ball.x - 50) * 0.3 + runForward));
+                        targetY = p.baseY;
+                    }
                 }
 
+                // 이동 계산
                 let distToTarget = getDistance(p.x, p.y, targetX, targetY);
                 let moveSpeed = (p.stats.spd || 70) / 100; 
+                // 골키퍼는 반응속도(이동속도)가 더 빠름
+                if (p.role === 'GK') moveSpeed *= 1.2; 
+
                 if (distToTarget > moveSpeed) {
                     p.x += ((targetX - p.x) / distToTarget) * moveSpeed;
                     p.y += ((targetY - p.y) / distToTarget) * moveSpeed;
                 }
 
+                // [D] 공 터치 및 슈팅/클리어링 로직
                 let distToBall = getDistance(p.x, p.y, state.ball.x, state.ball.y);
                 if (distToBall < 2.5) { 
+                    // ★ 킥 사운드 재생 이벤트 전송
+                    io.to(roomCode).emit('playSound', 'kick');
+
                     let targetGoalX = (p.team === 1) ? 100 : 0;
-                    if (Math.abs(p.x - targetGoalX) < 35) {
+                    
+                    if (p.role === 'GK') {
+                        // 골키퍼가 공을 잡으면 강하게 전방으로 걷어냄 (Clearance)
+                        state.ball.vx = (p.team === 1 ? 1 : -1) * 4.0;
+                        state.ball.vy = (Math.random() - 0.5) * 3;
+                    } 
+                    else if (Math.abs(p.x - targetGoalX) < 35) {
+                        // 슈팅
                         let power = (p.stats.sht || 70) / 20; 
                         let distToGoal = getDistance(p.x, p.y, targetGoalX, 50);
                         state.ball.vx = ((targetGoalX - p.x) / distToGoal) * power;
                         state.ball.vy = ((50 - p.y) / distToGoal) * power;
-                    } else {
+                    } 
+                    else {
+                        // 패스 및 드리블
                         let power = (p.stats.pas || 70) / 30;
                         state.ball.vx = (p.team === 1 ? 1 : -1) * power;
-                        state.ball.vy = (Math.random() - 0.5) * 2;
+                        state.ball.vy = (Math.random() - 0.5) * 2.5;
                     }
                 }
             });
 
-            // 시간 및 이벤트 계산
+            // 시간 계산 및 프론트엔드 전송
             let secondsPassed = Math.floor(state.ticks / 10);
             let gameMinute = Math.floor((secondsPassed / db.settings.halfDurationRealSeconds) * db.settings.gameMinutesPerHalf);
-            if (state.half === 2) gameMinute += 45; // 후반전이면 45분 추가
-
-            let eventText = "오픈 플레이";
-            // 2초마다 확률적으로 이벤트 발생 (파울, 스로인 등)
-            if (state.ticks % 20 === 0) {
-                const totalWeight = db.matchEvents.reduce((sum, e) => sum + e.weight, 0);
-                let rand = Math.random() * totalWeight;
-                for (let e of db.matchEvents) {
-                    if (rand < e.weight) { eventText = e.type; break; }
-                    rand -= e.weight;
-                }
-                
-                // 이벤트 발생 시 2초간 정지 후 재개
-                if (eventText !== "오픈 플레이") {
-                    state.isPaused = true;
-                    io.to(roomCode).emit('matchEventAlert', eventText);
-                    setTimeout(() => { state.isPaused = false; }, 2000);
-                }
-            }
+            if (state.half === 2) gameMinute += 45; 
 
             io.to(roomCode).emit('matchUpdate', {
-                gameMinute: gameMinute, event: eventText, ball: state.ball, players: state.players, score: state.score
+                gameMinute: gameMinute, event: "오픈 플레이", ball: state.ball, players: state.players, score: state.score
             });
 
-            // 하프타임 및 경기 종료 체크
             if (secondsPassed >= db.settings.halfDurationRealSeconds) {
                 clearInterval(room.matchInterval);
+                io.to(roomCode).emit('playSound', 'whistle'); // 전후반 종료 휘슬
                 if (state.half === 1) startHalfTime(roomCode);
-                else io.to(roomCode).emit('matchEnded', state.score); // 후반전 종료 시
+                else io.to(roomCode).emit('matchEnded', state.score); 
             }
         }, 100); 
     }
 
-    // 골 발생 시 처리 함수
+    // 골 발생 함수 수정 (휘슬 사운드 추가)
     function handleGoal(room, scoringTeam) {
         room.matchState.isPaused = true;
         room.matchState.score[`team${scoringTeam}`]++;
+        io.to(room.code).emit('playSound', 'whistle');
         io.to(room.code).emit('goalScored', { team: scoringTeam, score: room.matchState.score });
         
-        // 3초 후 실점한 팀의 킥오프로 재개
         setTimeout(() => {
             resetPositions(room.matchState, scoringTeam === 1 ? 2 : 1);
+            io.to(room.code).emit('playSound', 'whistle'); // 킥오프 휘슬
             room.matchState.isPaused = false;
         }, 3000);
     }
