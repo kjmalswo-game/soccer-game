@@ -68,13 +68,31 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinRoom', (roomCode) => {
-        if (rooms[roomCode] && Object.keys(rooms[roomCode].players).length < 2) {
-            rooms[roomCode].players[socket.id] = { id: 'player2', ready: false, team: [] };
+        const room = rooms[roomCode];
+        if (room && Object.keys(room.players).length < 2) {
+            room.players[socket.id] = { id: 'player2', ready: false, team: [] };
             socket.join(roomCode);
-            socket.emit('roomJoined', roomCode, db); 
-            io.to(roomCode).emit('playerJoinedLobby'); 
+            socket.emit('roomJoined', roomCode, db);
+            io.to(roomCode).emit('playerJoinedLobby');
         } else {
             socket.emit('error', '방이 가득 찼거나 존재하지 않는 코드입니다.');
+        }
+    });
+
+    socket.on('disconnect', () => {
+        for (const roomCode in rooms) {
+            const room = rooms[roomCode];
+            if (room.players[socket.id]) {
+                // 게임이 이미 시작된 경우에는 그냥 두고, 로비 상태일 때만 삭제
+                if (room.state === 'lobby' || room.state === 'draft') {
+                    delete room.players[socket.id];
+                    
+                    // 방에 아무도 없으면 방 삭제
+                    if (Object.keys(room.players).length === 0) {
+                        delete rooms[roomCode];
+                    }
+                }
+            }
         }
     });
 
@@ -98,12 +116,24 @@ io.on('connection', (socket) => {
         if (isP1 && room.currentDraft.p1Placed) return;
         if (!isP1 && room.currentDraft.p2Placed) return;
 
+        const alreadyPlaced = room.players[socket.id].team.some(t => t.slot === slotId);
+        if (alreadyPlaced) return;
+        
         room.players[socket.id].team.push({ slot: slotId, player: playerInfo });
         room.currentDraft.answers++;
         if (isP1) room.currentDraft.p1Placed = true;
         else room.currentDraft.p2Placed = true;
 
-        if (room.currentDraft.answers === 2) { clearTimeout(room.draftTimeout); room.draftCount++; nextDraftTurn(roomCode); }
+        if (room.currentDraft.answers === 2) { 
+            clearTimeout(room.draftTimeout); 
+            room.draftCount++; 
+            
+            if (room.draftCount >= 10) {
+                setTimeout(() => nextDraftTurn(roomCode), 1000);
+            } else {
+                nextDraftTurn(roomCode); 
+            }
+        }
     });
 
     socket.on('swapPlayers', (roomCode, teamId, id1, id2) => {
@@ -146,12 +176,9 @@ function nextDraftTurn(roomCode) {
             const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
             
             if (!hasPlaced) {
-                // [inference] 하드코딩된 0~9 대신 포메이션의 실제 키값을 기준으로 빈자리를 찾도록 수정
-                const formationData = Array.isArray(db.formations) 
-                    ? db.formations.find(f => f.id === pData.formation)?.positions   // ?. 추가
-                    : db.formations[pData.formation]?.positions;
+                const formationPositions = db.formations[pData.formation]?.positions || [];
                 
-                const allSlots = Object.keys(formationData); // 배열 인덱스 또는 객체의 문자열 키
+                const allSlots = Object.keys(formationPositions);
                 const filledSlots = pData.team.map(t => String(t.slot)); // 비교를 위해 전부 문자열 변환
                 
                 // 남은 슬롯 중 아직 채워지지 않은 첫 번째 빈자리 찾기
@@ -159,8 +186,7 @@ function nextDraftTurn(roomCode) {
                 
                 if(emptySlot !== undefined) {
                     const assignedPlayer = isP1 ? room.currentDraft.p1 : room.currentDraft.p2;
-                    // 기존 데이터 타입 유지 (배열이면 정수로, 객체면 문자열로 저장)
-                    const finalSlot = Array.isArray(formationData) ? parseInt(emptySlot) : emptySlot;
+                    const finalSlot = parseInt(emptySlot);
                     
                     pData.team.push({ slot: finalSlot, player: assignedPlayer });
                     io.to(pId).emit('autoPlaced', finalSlot, assignedPlayer); 
@@ -196,13 +222,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         const playerIds = Object.keys(room.players);
         const p1Data = room.players[playerIds[0]], p2Data = room.players[playerIds[1]];
         
-        const p1Formation = Array.isArray(db.formations) 
-            ? db.formations.find(f => f.id === p1Data.formation)?.positions 
-            : db.formations[p1Data.formation]?.positions;
-            
-        const p2Formation = Array.isArray(db.formations) 
-            ? db.formations.find(f => f.id === p2Data.formation)?.positions 
-            : db.formations[p2Data.formation]?.positions;
+        const p1Formation = db.formations[p1Data.formation]?.positions || [];
+        const p2Formation = db.formations[p2Data.formation]?.positions || [];
             
         if (!p1Formation || !p2Formation) {
             console.error("🔥 포메이션 데이터를 읽어오지 못했습니다.", {
@@ -223,8 +244,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         const mapTeamPlayers = (teamData, formationPositions, teamId) => {
             return teamData.team.map((t, idx) => {
                 // 문자열 혼합형 slot 방어용 정제 처리
-                const cleanSlot = typeof t.slot === 'number' ? t.slot : parseInt(String(t.slot).replace(/[^0-9]/g, ''), 10);
-                // 해당 슬롯 인덱스가 없으면 배열의 순서(idx)나 기본 객체로 대체
+                let cleanSlot = typeof t.slot === 'number' ? t.slot : parseInt(String(t.slot).replace(/[^0-9]/g, ''), 10);
+                if (isNaN(cleanSlot)) cleanSlot = idx;   // 파싱 실패 시 순서(idx) 사용
+                
                 const pos = formationPositions[cleanSlot] || formationPositions[idx] || { id: 'MF', x: 50, y: 50 };
                 
                 if (teamId === 1) {
@@ -670,7 +692,10 @@ function setupSetPiece(state, type, sideTeam = 1) {
                 if(p.role === 'DF') { p.x = goalX + (sideTeam===1?15:-15); p.y = p.baseY; }
                 else if(p.role === 'MF') { p.x = 40; p.y = p.baseY; }
                 else if(p.role === 'FW') { p.x = sideTeam===1?60:40; p.y = p.baseY; }
-            } else { p.x = sideTeam===1? 50:50; }
+            } else { 
+                p.x = sideTeam === 1 ? 65 : 35;   // 상대편 하프라인 근처로 밀기
+                p.y = p.baseY; 
+            }
         });
         let gk = state.players.find(p => p.team === sideTeam && p.role === 'GK');
         if(gk) { gk.x = state.ball.x; gk.y = state.ball.y; gk.cooldown = 15; }
