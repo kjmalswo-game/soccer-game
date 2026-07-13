@@ -32,10 +32,30 @@
     {"type": "페널티킥", "weight": 1}
   ],
   "players": [
-    {"id": 1, "name": "L. Messi", "stats": {"spd": 85, "sht": 95, "pas": 90}},
-    {"id": 2, "name": "K. De Bruyne", "stats": {"spd": 75, "sht": 85, "pas": 95}},
-    {"id": 3, "name": "M. Salah", "stats": {"spd": 90, "sht": 88, "pas": 80}},
-    {"id": 4, "name": "E. Haaland", "stats": {"spd": 88, "sht": 96, "pas": 65}},
-    {"id": 5, "name": "K. Mbappe", "stats": {"spd": 97, "sht": 92, "pas": 82}}
+    {"id": 1, "name": "리오넬 메시", "stats": {"spd": 97, "sht": 97, "pas": 97}},
+    {"id": 2, "name": "케빈 데브라이너", "stats": {"spd": 75, "sht": 90, "pas": 97}},
+    {"id": 3, "name": "모하메드 살라", "stats": {"spd": 85, "sht": 88, "pas": 75}},
+    {"id": 4, "name": "엘링 홀란", "stats": {"spd": 85, "sht": 96, "pas": 65}},
+    {"id": 5, "name": "킬리안 음바페", "stats": {"spd": 93, "sht": 89, "pas": 83}},
+    {"id": 6, "name": "레반도프스키", "stats": {"spd": 80, "sht": 93, "pas": 88}},
+    {"id": 7, "name": "라민 야말", "stats": {"spd": 87, "sht": 92, "pas": 70}},
+    {"id": 8, "name": "마이클 올리세", "stats": {"spd": 85, "sht": 88, "pas": 83}},
+    {"id": 9, "name": "주드 벨링엄", "stats": {"spd": 80, "sht": 80, "pas": 86}},
+    {"id": 10, "name": "비니시우스", "stats": {"spd": 90, "sht": 81, "pas": 70}},
+    {"id": 11, "name": "로드리", "stats": {"spd": 73, "sht": 80, "pas": 87}},
+    {"id": 12, "name": "해리 케인", "stats": {"spd": 75, "sht": 97, "pas": 97}},
+    {"id": 13, "name": "앙투안 그리즈만", "stats": {"spd": 80, "sht": 85, "pas": 88}},
+    {"id": 14, "name": "우스만 뎀벨레", "stats": {"spd": 89, "sht": 85, "pas": 75}},
+    {"id": 15, "name": "손흥민", "stats": {"spd": 89, "sht": 95, "pas": 80}},
+    {"id": 16, "name": "페데리코 발베르데", "stats": {"spd": 80, "sht": 86, "pas": 85}},
+    {"id": 17, "name": "필 포든", "stats": {"spd": 85, "sht": 85, "pas": 88}},
+    {"id": 18, "name": "마르틴 외데고르", "stats": {"spd": 78, "sht": 81, "pas": 89}},
+    {"id": 19, "name": "부카요 사카", "stats": {"spd": 87, "sht": 80, "pas": 77}},
+    {"id": 20, "name": "프렝키 더용", "stats": {"spd": 81, "sht": 71, "pas": 88}},
+    {"id": 21, "name": "이강인", "stats": {"spd": 79, "sht": 83, "pas": 93}},
+    {"id": 22, "name": "김민재", "stats": {"spd": 87, "sht": 55, "pas": 75}},
+    {"id": 23, "name": "버질 반 다이크", "stats": {"spd": 83, "sht": 50, "pas": 75}},
+    {"id": 24, "name": "후벵 디아스", "stats": {"spd": 70, "sht": 40, "pas": 70}},
+    {"id": 25, "name": "아슈라프 하키미", "stats": {"spd": 89, "sht": 74, "pas": 80}}
   ]
 }
