@@ -11,10 +11,8 @@
         button:hover { background-color: #2bcbba; }
         input, select { padding: 10px; margin: 10px; font-size: 16px; border-radius: 5px; border: none; }
         
-        /* 매치 경기장 (가로) */
-        .pitch { width: 800px; height: 500px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; overflow: hidden; }
-        
-        /* ★ 드래프트 경기장 (세로형) */
+        /* 매치 경기장 */
+        .pitch { width: 800px; height: 500px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; }
         .draft-pitch { width: 400px; height: 600px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);}
         
         .player-node { width: 35px; height: 35px; border-radius: 50%; background: #eb3b5a; border: 2px solid white; position: absolute; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 5; user-select: none;}
@@ -27,19 +25,24 @@
         #goal-popup { display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:80px; font-weight:900; color:gold; text-shadow:4px 4px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000; z-index:100; animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; pointer-events: none;}
         @keyframes popIn { 0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; } 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
 
-        /* ★ 경기장 라인 마킹 CSS */
+        /* ★ 경기장 마킹 & 골대 그물망(Net) CSS */
         .line-center { position:absolute; left:50%; top:0; bottom:0; border-left:3px solid rgba(255,255,255,0.7); z-index: 1;}
         .circle-center { position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); width:100px; height:100px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; z-index: 1;}
-        .box-penalty-left { position:absolute; left:0; top:20%; width:15%; height:60%; border:3px solid rgba(255,255,255,0.7); border-left:none; z-index: 1;}
-        .box-goal-left { position:absolute; left:0; top:35%; width:5%; height:30%; border:3px solid rgba(255,255,255,0.7); border-left:none; z-index: 1;}
-        .arc-left { position:absolute; left:15%; top:50%; transform:translate(-50%, -50%); width:60px; height:80px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%); z-index: 0;}
         
-        .box-penalty-right { position:absolute; right:0; top:20%; width:15%; height:60%; border:3px solid rgba(255,255,255,0.7); border-right:none; z-index: 1;}
-        .box-goal-right { position:absolute; right:0; top:35%; width:5%; height:30%; border:3px solid rgba(255,255,255,0.7); border-right:none; z-index: 1;}
-        .arc-right { position:absolute; right:15%; top:50%; transform:translate(50%, -50%); width:60px; height:80px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); z-index: 0;}
+        /* 페널티 박스 (18야드) */
+        .box-penalty-left { position:absolute; left:0; top:20%; width:16%; height:60%; border:3px solid rgba(255,255,255,0.7); border-left:none; z-index: 1;}
+        .box-penalty-right { position:absolute; right:0; top:20%; width:16%; height:60%; border:3px solid rgba(255,255,255,0.7); border-right:none; z-index: 1;}
         
-        .goal-post-left { position:absolute; left:-6px; top:40%; width:6px; height:20%; background:white; z-index: 2;}
-        .goal-post-right { position:absolute; right:-6px; top:40%; width:6px; height:20%; background:white; z-index: 2;}
+        /* ★ 키퍼 박스 (6야드 박스 - 추가됨) */
+        .box-keeper-left { position:absolute; left:0; top:36%; width:6%; height:28%; border:3px solid rgba(255,255,255,0.7); border-left:none; z-index: 1;}
+        .box-keeper-right { position:absolute; right:0; top:36%; width:6%; height:28%; border:3px solid rgba(255,255,255,0.7); border-right:none; z-index: 1;}
+
+        .arc-left { position:absolute; left:16%; top:50%; transform:translate(-50%, -50%); width:60px; height:80px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; clip-path: polygon(50% 0, 100% 0, 100% 100%, 50% 100%); z-index: 0;}
+        .arc-right { position:absolute; right:16%; top:50%; transform:translate(50%, -50%); width:60px; height:80px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); z-index: 0;}
+        
+        /* ★ 진짜 골대 그물망 (Net - 경기장 바깥으로 입체적 표현) */
+        .goal-net-left { position:absolute; left:-30px; top:38%; width:27px; height:24%; background: rgba(255,255,255,0.2); border: 3px solid white; border-right: none; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); z-index: 1; background-image: radial-gradient(white 15%, transparent 16%), radial-gradient(white 15%, transparent 16%); background-size: 6px 6px; background-position: 0 0, 3px 3px;}
+        .goal-net-right { position:absolute; right:-30px; top:38%; width:27px; height:24%; background: rgba(255,255,255,0.2); border: 3px solid white; border-left: none; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); z-index: 1; background-image: radial-gradient(white 15%, transparent 16%), radial-gradient(white 15%, transparent 16%); background-size: 6px 6px; background-position: 0 0, 3px 3px;}
     </style>
 </head>
 <body>
@@ -77,8 +80,8 @@
         
         <div class="pitch" id="match-pitch">
             <div class="line-center"></div><div class="circle-center"></div>
-            <div class="box-penalty-left"></div><div class="box-goal-left"></div><div class="arc-left"></div><div class="goal-post-left"></div>
-            <div class="box-penalty-right"></div><div class="box-goal-right"></div><div class="arc-right"></div><div class="goal-post-right"></div>
+            <div class="box-penalty-left"></div><div class="box-keeper-left"></div><div class="arc-left"></div><div class="goal-net-left"></div>
+            <div class="box-penalty-right"></div><div class="box-keeper-right"></div><div class="arc-right"></div><div class="goal-net-right"></div>
             
             <div id="goal-popup">GOAL!!!</div>
         </div>
@@ -99,7 +102,7 @@
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        // ★ Render 서버 주소 필수 변경 구간
+        // ★ 본인 Render 서버 주소 필수 변경 구간
         const socket = io('https://soccer-game-g9tc.onrender.com'); 
         
         const sfxKick = new Audio('https://assets.mixkit.co/active_storage/sfx/2105/2105-preview.mp3');
@@ -108,7 +111,6 @@
 
         let myRoomCode = '', gameDB = {}, myFormation = [], currentDraftPlayer = null, timerInterval, isHost = false, myTeamId = 1;
 
-        // 화면 전환 시 사운드 락 해제를 위한 꼼수 (최초 1회 클릭 시 빈 소리 재생)
         document.body.addEventListener('click', () => { sfxKick.play().then(()=>sfxKick.pause()).catch(()=>{}); }, {once: true});
 
         socket.on('playSound', (type) => {
@@ -158,15 +160,12 @@
             const btn = document.getElementById('btn-ready'); btn.innerText = "준비 완료! (대기 중)"; btn.disabled = true; btn.style.background = 'gray';
         }
 
-        // --- 드래프트 (세로형 구현) ---
         socket.on('startDraft', () => {
             const pitch = document.getElementById('draft-pitch'); pitch.innerHTML = '';
             myFormation.forEach((pos, index) => {
                 const slot = document.createElement('div');
                 slot.className = 'player-node'; slot.id = `slot-${index}`;
-                // ★ 수학적 변환: X가 10(수비)이면 top 90%(아래), X가 80(공격)이면 top 20%(위)
-                slot.style.left = pos.y + '%';
-                slot.style.top = (100 - pos.x) + '%';
+                slot.style.left = pos.y + '%'; slot.style.top = (100 - pos.x) + '%';
                 slot.innerText = pos.id;
                 slot.onclick = () => placePlayer(index, slot);
                 pitch.appendChild(slot);
@@ -204,11 +203,9 @@
             if(emptySlots.length > 0) emptySlots[Math.floor(Math.random() * emptySlots.length)].click();
         });
 
-        // --- 매치 화면 ---
         socket.on('matchStarted', (matchState) => { 
             showScreen('screen-match'); 
             const pitch = document.getElementById('match-pitch');
-            // 라인 UI 살려두고 동적인 말들만 지우기
             pitch.querySelectorAll('.player-node, #match-ball').forEach(el => el.remove());
 
             const ballEl = document.createElement('div');
@@ -233,7 +230,6 @@
         });
 
         socket.on('matchUpdate', (data) => {
-            // ★ 초 단위 실시간 디스플레이 (MM:SS)
             const min = Math.floor(data.gameSeconds / 60);
             const sec = Math.floor(data.gameSeconds % 60);
             document.getElementById('match-clock').innerText = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
@@ -253,21 +249,16 @@
             const popup = document.getElementById('goal-popup');
             popup.innerText = `TEAM ${data.team} GOAL!!!`;
             popup.style.display = 'block';
-            
-            // 애니메이션 재시작 트릭
             popup.style.animation = 'none'; popup.offsetHeight; popup.style.animation = null;
-            
             setTimeout(() => { popup.style.display = 'none'; }, 2800);
         });
 
-        // --- 하프타임 스왑(Swap) 로직 ---
         let draggedNode = null;
         socket.on('halfTimeStarted', (duration, playersData) => {
             showScreen('screen-halftime');
             const hPitch = document.getElementById('halftime-pitch');
             hPitch.querySelectorAll('.player-node').forEach(el => el.remove());
 
-            // 본인 팀 선수만 렌더링하고 드래그 가능하게
             playersData.filter(p => p.team === myTeamId && p.role !== 'GK').forEach(player => {
                 const el = document.createElement('div');
                 el.className = 'player-node';
@@ -277,19 +268,15 @@
                 el.draggable = true; el.dataset.id = player.id; el.dataset.team = player.team;
 
                 el.addEventListener('dragstart', (e) => { draggedNode = el; e.dataTransfer.effectAllowed = "move"; });
-                
-                // ★ 서로 스왑하기 위한 drop 이벤트
                 el.addEventListener('dragover', (e) => { e.preventDefault(); });
                 el.addEventListener('drop', (e) => {
                     e.preventDefault();
                     if(draggedNode && draggedNode !== el) {
                         const draggedId = draggedNode.dataset.id;
                         const targetId = el.dataset.id;
-                        // CSS 화면상 즉시 교체
                         const tempLeft = draggedNode.style.left, tempTop = draggedNode.style.top;
                         draggedNode.style.left = el.style.left; draggedNode.style.top = el.style.top;
                         el.style.left = tempLeft; el.style.top = tempTop;
-                        // 서버로 스왑 신호 전송
                         socket.emit('swapPlayers', myRoomCode, myTeamId, draggedId, targetId);
                     }
                 });
