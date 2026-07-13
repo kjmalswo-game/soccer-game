@@ -230,7 +230,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         const p2Formation = db.formations[p2Data.formation]?.positions || [];
         
         if (p1Formation.length === 0 || p2Formation.length === 0) {
-            io.to(roomCode).emit('error', '포메이션 데이터를 불러올 수 없습니다.');
+            console.error("🔥 포메이션 데이터를 읽어오지 못했습니다.", {
+                p1FormationId: p1Data.formation,
+                p2FormationId: p2Data.formation,
+                availableFormations: Object.keys(db.formations)
+            });
+            io.to(roomCode).emit('error', '포메이션 데이터를 불러올 수 없습니다. 다시 시도해주세요.');
             return;
         }
 
