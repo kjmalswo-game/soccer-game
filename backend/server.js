@@ -466,7 +466,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         io.to(roomCode).emit('playSound', 'kick');
                         // ⬇️ ★ 패스 속도 조절하는 곳 ★ ⬇️
                         // 아래 나누는 숫자(26)를 키우면 패스가 느려지고, 줄이면 패스가 빨라집니다.
-                        let power = ((p.stats && p.stats.pas ? p.stats.pas : 80) / 26); 
+                        let power = ((p.stats && p.stats.pas ? p.stats.pas : 80) / 31); 
                         let d = getDistance(p.x, p.y, bestMate.x, bestMate.y) || 1; 
                         state.ball.vx = ((bestMate.x - p.x) / d) * power;
                         state.ball.vy = ((bestMate.y - p.y) / d) * power + (Math.random()-0.5)*0.2;
