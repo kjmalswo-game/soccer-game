@@ -205,8 +205,13 @@
                 const slot = document.createElement('div');
                 slot.className = 'player-node';
                 slot.id = `slot-${index}`;
-                slot.style.left = pos.x + '%';
-                slot.style.top = pos.y + '%';
+                
+                // ★ 270도 회전 효과 적용 (X와 Y 좌표 변환)
+                // pos.x(공격 방향)가 클수록 화면 위쪽(top 0%)으로 가도록 100에서 뺌
+                // pos.y(좌우 퍼짐)를 가로(left)로 그대로 매핑
+                slot.style.left = pos.y + '%';
+                slot.style.top = (100 - pos.x) + '%';
+                
                 slot.innerText = pos.id;
                 slot.onclick = () => placePlayer(index, slot);
                 pitch.appendChild(slot);
