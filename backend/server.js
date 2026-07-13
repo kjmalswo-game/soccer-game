@@ -80,10 +80,26 @@ io.on('connection', (socket) => {
 
     socket.on('playerPlaced', (roomCode, slotId, playerInfo) => {
         const room = rooms[roomCode];
-        if(!room) return;
+        if(!room || !room.currentDraft) return;
+
+        const isP1 = room.players[socket.id].id === 'player1';
+        
+        // ★ 광클(중복 제출) 버그 완벽 차단 로직
+        if (isP1 && room.currentDraft.player1Placed) return;
+        if (!isP1 && room.currentDraft.player2Placed) return;
+
         room.players[socket.id].team.push({ slot: slotId, player: playerInfo });
         room.currentDraft.answers++;
-        if (room.currentDraft.answers === 2) { clearTimeout(room.draftTimeout); room.draftCount++; nextDraftTurn(roomCode); }
+        
+        // 제출 완료 상태로 변경
+        if (isP1) room.currentDraft.player1Placed = true;
+        else room.currentDraft.player2Placed = true;
+        
+        if (room.currentDraft.answers === 2) { 
+            clearTimeout(room.draftTimeout); 
+            room.draftCount++; 
+            nextDraftTurn(roomCode); 
+        }
     });
 
     socket.on('swapPlayers', (roomCode, teamId, id1, id2) => {
@@ -109,15 +125,63 @@ function startDraftPhase(roomCode) {
 function nextDraftTurn(roomCode) {
     const room = rooms[roomCode];
     if (room.draftCount >= 10) { startMatchPhase(roomCode, false); return; }
+    
     function pullRandomPlayer() {
         if(room.availablePlayers.length === 0) return null;
         const idx = Math.floor(Math.random() * room.availablePlayers.length);
         return room.availablePlayers.splice(idx, 1)[0];
     }
+    
     const p1Player = pullRandomPlayer(), p2Player = pullRandomPlayer();
-    room.currentDraft = { p1: p1Player, p2: p2Player, answers: 0 };
+    
+    // ★ 개별 제출 여부를 추적하도록 초기화 데이터 변경
+    room.currentDraft = { 
+        p1: p1Player, p2: p2Player, 
+        answers: 0, player1Placed: false, player2Placed: false 
+    };
+    
     io.to(roomCode).emit('draftPlayer', { p1: p1Player, p2: p2Player, timeLimit: room.settings.timer });
-    room.draftTimeout = setTimeout(() => { io.to(roomCode).emit('forceRandomPlacement'); }, room.settings.timer * 1000);
+    
+    // ★ 타이머 종료 시 서버 강제 배치 로직 (게임 멈춤 100% 해결)
+    room.draftTimeout = setTimeout(() => { 
+        if(!room || !room.currentDraft) return;
+        
+        const playerIds = Object.keys(room.players);
+        playerIds.forEach(pId => {
+            const pData = room.players[pId];
+            const isP1 = pData.id === 'player1';
+            const hasPlaced = isP1 ? room.currentDraft.player1Placed : room.currentDraft.player2Placed;
+            
+            // 아직 선택하지 않은 플레이어가 있다면?
+            if (!hasPlaced) {
+                const filledSlots = pData.team.map(t => parseInt(t.slot));
+                let emptySlot = -1;
+                
+                // 0번부터 9번 슬롯 중 가장 먼저 발견되는 빈자리를 찾음
+                for(let i = 0; i < 10; i++) {
+                    if(!filledSlots.includes(i)) { emptySlot = i; break; }
+                }
+                
+                if(emptySlot !== -1) {
+                    const assignedPlayer = isP1 ? room.currentDraft.p1 : room.currentDraft.p2;
+                    pData.team.push({ slot: emptySlot, player: assignedPlayer });
+                    
+                    // 서버가 강제로 넣었으니 프론트엔드 UI를 업데이트하라고 명령
+                    io.to(pId).emit('autoPlaced', emptySlot, assignedPlayer);
+                }
+                
+                room.currentDraft.answers++;
+                if(isP1) room.currentDraft.player1Placed = true;
+                else room.currentDraft.player2Placed = true;
+            }
+        });
+        
+        // 미선택자들까지 모두 강제 배치가 끝났으므로 다음 턴으로 무조건 전진
+        if (room.currentDraft.answers >= 2) {
+            room.draftCount++;
+            nextDraftTurn(roomCode);
+        }
+    }, room.settings.timer * 1000 + 1000); // 핑을 고려해 1초의 넉넉한 유예 시간 추가
 }
 
 function startMatchPhase(roomCode, isSecondHalf = false) {
