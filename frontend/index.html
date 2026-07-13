@@ -195,9 +195,13 @@
             currentDraftPlayer = null;
         }
 
-        socket.on('forceRandomPlacement', () => {
-            const emptySlots = Array.from(document.getElementById('draft-pitch').children).filter(el => !el.classList.contains('player-placed'));
-            if(emptySlots.length > 0) emptySlots[Math.floor(Math.random() * emptySlots.length)].click();
+        socket.on('autoPlaced', (slotId, playerInfo) => {
+            const slotElement = document.getElementById(`slot-${slotId}`);
+            if(slotElement && !slotElement.classList.contains('player-placed')) {
+                slotElement.innerText = playerInfo.name.substring(0, 3);
+                slotElement.classList.add('player-placed');
+            }
+            currentDraftPlayer = null; // 쿨타임 초기화
         });
 
         socket.on('matchStarted', (matchState) => { 
