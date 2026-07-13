@@ -520,11 +520,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     else {
                         let dodgeY = (p.y > 50) ? -1 : 1;
                         if (enemyAhead) {
-                            state.ball.vx = dir * 1.4; state.ball.vy = dodgeY * 1.9; 
+                            // [1] 적이 가로막고 있을 때 옆으로 회피(Dodge)하는 드리블
+                            state.ball.vx = dir * 1.4;   // 앞으로 툭 치는 힘 (기본 1.4)
+                            state.ball.vy = dodgeY * 1.55; // 옆으로 툭 치는 힘 (기본 1.9)
                         } else {
-                            state.ball.vx = dir * 1.7; state.ball.vy = (Math.random() - 0.5) * 0.5;
+                            // [2] 앞이 비어있을 때 앞으로 전진하는 드리블
+                            state.ball.vx = dir * 1.62;   // 앞으로 길게 치는 힘 (기본 1.7)
+                            state.ball.vy = (Math.random() - 0.5) * 0.5;
                         }
-                        p.cooldown = 2;
+                        // [3] 드리블 쿨타임 (다음 터치까지 걸리는 시간)
+                        p.cooldown = 1.5; // 기본 2틱 (0.2초)
                     }
                 }
             }
