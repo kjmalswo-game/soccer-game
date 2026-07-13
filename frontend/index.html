@@ -50,10 +50,24 @@
     </div>
 
     <div id="screen-match" class="screen">
-        <h2><span id="match-clock">00:00</span> - 상태: <span id="match-event" style="color: #f7b731;">킥오프 대기</span></h2>
-        <div class="pitch" id="match-pitch">
-            <p style="text-align:center; color:rgba(255,255,255,0.5); margin-top:200px;">경기 진행 뷰 (물리엔진 시뮬레이션 영역)</p>
+        <div style="background:#2f3640; padding:10px 30px; border-radius:10px; font-size:24px; font-weight:bold; margin-bottom:10px;">
+            <span style="color:#3867d6;">TEAM 1</span> <span id="score-display">0 : 0</span> <span style="color:#eb3b5a;">TEAM 2</span>
         </div>
+        <h2><span id="match-clock">00:00</span> - 상태: <span id="match-event" style="color: #f7b731;">킥오프 대기</span></h2>
+        
+        <div class="pitch" id="match-pitch">
+            <div id="goal-popup" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); font-size:50px; font-weight:bold; color:gold; text-shadow:2px 2px 5px black; z-index:100;">GOAL!!!</div>
+        </div>
+    </div>
+
+    <div id="screen-halftime" class="screen">
+        <h2>하프타임! 드래그하여 진영을 재배치하세요 (<span id="halftime-timer" style="color:#f7b731;"></span>초)</h2>
+        <div class="pitch" id="halftime-pitch"></div>
+    </div>
+    
+    <div id="screen-result" class="screen">
+        <h1 id="final-result-text" style="font-size: 60px;"></h1>
+        <button onclick="location.reload()">처음으로 돌아가기</button>
     </div>
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
