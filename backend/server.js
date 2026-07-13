@@ -274,14 +274,27 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         resetPositions(room.matchState, 2);
     }
 
-    io.to(roomCode).emit('playSound', 'whistle');
-
         if (!isSecondHalf) {
             io.to(roomCode).emit('matchStarted', room.matchState);
         } else {
             io.to(roomCode).emit('secondHalfStarted', room.matchState);
         }
         io.to(roomCode).emit('playSound', 'whistle');
+    
+        console.log('[DEBUG] matchInterval 시작 직전', { roomCode });
+    
+        room.matchInterval = setInterval(() => {
+            const state = room.matchState;
+    
+            if (!state) {
+                console.error('[DEBUG] state가 없음! interval 중단');
+                clearInterval(room.matchInterval);
+                return;
+            }
+    
+            if (state.isPaused) return;
+    
+            state.ticks++;
 
     room.matchInterval = setInterval(() => {
         const state = room.matchState;
