@@ -1,0 +1,41 @@
+{
+  "settings": {
+    "draftTimers": [5, 15, 30],
+    "halfTimeDurationRealSeconds": 15,
+    "halfDurationRealSeconds": 120,
+    "gameMinutesPerHalf": 45
+  },
+  "formations": {
+    "4-3-3": {
+      "positions": [
+        {"id": "LB", "x": 10, "y": 20}, {"id": "CB1", "x": 10, "y": 40}, {"id": "CB2", "x": 10, "y": 60}, {"id": "RB", "x": 10, "y": 80},
+        {"id": "CM1", "x": 40, "y": 30}, {"id": "CM2", "x": 40, "y": 50}, {"id": "CM3", "x": 40, "y": 70},
+        {"id": "LW", "x": 80, "y": 20}, {"id": "ST", "x": 80, "y": 50}, {"id": "RW", "x": 80, "y": 80}
+      ]
+    },
+    "4-2-3-1": {
+      "positions": [
+        {"id": "LB", "x": 10, "y": 15}, {"id": "CB1", "x": 10, "y": 38}, {"id": "CB2", "x": 10, "y": 62}, {"id": "RB", "x": 10, "y": 85},
+        {"id": "CDM1", "x": 30, "y": 35}, {"id": "CDM2", "x": 30, "y": 65},
+        {"id": "LM", "x": 60, "y": 15}, {"id": "CAM", "x": 60, "y": 50}, {"id": "RM", "x": 60, "y": 85},
+        {"id": "ST", "x": 85, "y": 50}
+      ]
+    }
+  },
+  "matchEvents": [
+    {"type": "오픈 플레이 (진행중)", "weight": 75},
+    {"type": "스로인", "weight": 8},
+    {"type": "프리킥", "weight": 7},
+    {"type": "코너킥", "weight": 5},
+    {"type": "골킥", "weight": 4},
+    {"type": "오프사이드", "weight": 3},
+    {"type": "페널티킥", "weight": 1}
+  ],
+  "players": [
+    {"id": 1, "name": "L. Messi", "stats": {"spd": 85, "sht": 95, "pas": 90}},
+    {"id": 2, "name": "K. De Bruyne", "stats": {"spd": 75, "sht": 85, "pas": 95}},
+    {"id": 3, "name": "M. Salah", "stats": {"spd": 90, "sht": 88, "pas": 80}},
+    {"id": 4, "name": "E. Haaland", "stats": {"spd": 88, "sht": 96, "pas": 65}},
+    {"id": 5, "name": "K. Mbappe", "stats": {"spd": 97, "sht": 92, "pas": 82}}
+  ]
+}

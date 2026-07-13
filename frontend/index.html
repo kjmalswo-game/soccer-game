@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draft FC - Auto Battler</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; background: #1e272e; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        .screen { display: none; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; }
+        .active { display: flex; }
+        
+        button { padding: 10px 20px; margin: 10px; font-size: 16px; cursor: pointer; background-color: #0fb9b1; border: none; color: white; border-radius: 5px; }
+        button:hover { background-color: #2bcbba; }
+        input, select { padding: 10px; margin: 10px; font-size: 16px; border-radius: 5px; border: none; }
+        
+        .pitch { width: 800px; height: 500px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; }
+        .half-pitch { width: 400px; height: 500px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; }
+        
+        .player-node { width: 35px; height: 35px; border-radius: 50%; background: #eb3b5a; border: 2px solid white; position: absolute; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .player-placed { background: #3867d6; cursor: default; }
+        
+        #draft-popup { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.8); padding: 20px; border-radius: 10px; transition: transform 0.5s ease; border: 1px solid #0fb9b1; z-index: 10; }
+        .popup-minimized { transform: scale(0.6) translate(-20px, -20px); transform-origin: top left; }
+    </style>
+</head>
+<body>
+
+    <div id="screen-main" class="screen active">
+        <h1>⚽ Draft FC</h1>
+        <button onclick="createRoom()">방 생성 (방장)</button>
+        <div style="margin-top: 20px;">
+            <input type="text" id="join-code" placeholder="입장 코드 6자리">
+            <button onclick="joinRoom()">입장 하기</button>
+        </div>
+    </div>
+
+    <div id="screen-lobby" class="screen">
+        <h2>대기방 (입장 코드: <span id="display-code" style="color: #0fb9b1;"></span>)</h2>
+        <div id="settings-container"></div>
+        <button onclick="readyToPlay()">준비 완료 (포메이션 선택 시 게임 시작)</button>
+    </div>
+
+    <div id="screen-draft" class="screen">
+        <h2>선수 드래프트 (<span id="draft-timer" style="color:#eb3b5a; font-size: 24px;"></span>초)</h2>
+        <div id="draft-popup">
+            <h3 id="draft-player-name">선수 이름</h3>
+            <p id="draft-player-stats"></p>
+        </div>
+        <div class="half-pitch" id="draft-pitch"></div>
+    </div>
+
+    <div id="screen-match" class="screen">
+        <h2><span id="match-clock">00:00</span> - 상태: <span id="match-event" style="color: #f7b731;">킥오프 대기</span></h2>
+        <div class="pitch" id="match-pitch">
+            <p style="text-align:center; color:rgba(255,255,255,0.5); margin-top:200px;">경기 진행 뷰 (물리엔진 시뮬레이션 영역)</p>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        // ★ 중요: Render에 백엔드를 배포한 후 발급받은 주소로 변경하세요.
+        // 예시: const socket = io('https://soccer-game-g9tc.onrender.com');
+        const socket = io('여기에-Render-백엔드-주소를-넣으세요'); 
+        
+        let myRoomCode = '';
+        let gameDB = {};
+        let myFormation = [];
+        let currentDraftPlayer = null;
+        let timerInterval;
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        function createRoom() { socket.emit('createRoom'); }
+        function joinRoom() { 
+            const code = document.getElementById('join-code').value.toUpperCase();
+            if(code) socket.emit('joinRoom', code); 
+        }
+
+        socket.on('roomCreated', (code, db) => { setupLobby(code, db); });
+        socket.on('playerJoined', (db) => { setupLobby(myRoomCode, db); });
+        socket.on('error', (msg) => alert(msg));
+
+        function setupLobby(code, db) {
+            myRoomCode = code;
+            gameDB = db;
+            document.getElementById('display-code').innerText = code;
+            
+            const container = document.getElementById('settings-container');
+            container.innerHTML = '<h4>제한시간 설정</h4>';
+            
+            const timerSelect = document.createElement('select');
+            timerSelect.id = 'timer-select';
+            gameDB.settings.draftTimers.forEach(t => {
+                const opt = document.createElement('option');
+                opt.value = t; opt.innerText = `${t}초`;
+                timerSelect.appendChild(opt);
+            });
+            container.appendChild(timerSelect);
+
+            container.innerHTML += '<h4>포메이션 선택</h4>';
+            const formationSelect = document.createElement('select');
+            formationSelect.id = 'formation-select';
+            Object.keys(gameDB.formations).forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f; opt.innerText = f;
+                formationSelect.appendChild(opt);
+            });
+            container.appendChild(formationSelect);
+
+            showScreen('screen-lobby');
+        }
+
+        function readyToPlay() {
+            const timer = document.getElementById('timer-select').value;
+            const formationId = document.getElementById('formation-select').value;
+            socket.emit('setTimer', myRoomCode, timer);
+            socket.emit('playerReady', myRoomCode, formationId);
+            myFormation = gameDB.formations[formationId].positions;
+        }
+
+        // --- 드래프트 ---
+        socket.on('startDraft', () => {
+            const pitch = document.getElementById('draft-pitch');
+            pitch.innerHTML = '';
+            
+            myFormation.forEach((pos, index) => {
+                const slot = document.createElement('div');
+                slot.className = 'player-node';
+                slot.id = `slot-${index}`;
+                slot.style.left = pos.x + '%';
+                slot.style.top = pos.y + '%';
+                slot.innerText = pos.id;
+                slot.onclick = () => placePlayer(index, slot);
+                pitch.appendChild(slot);
+            });
+            showScreen('screen-draft');
+        });
+
+        socket.on('draftPlayer', (data) => {
+            clearInterval(timerInterval);
+            currentDraftPlayer = data.p1; 
+            
+            const popup = document.getElementById('draft-popup');
+            popup.classList.remove('popup-minimized');
+            document.getElementById('draft-player-name').innerText = currentDraftPlayer.name;
+            document.getElementById('draft-player-stats').innerText = 
+                `스피드: ${currentDraftPlayer.stats.spd} | 슈팅: ${currentDraftPlayer.stats.sht}`;
+            
+            setTimeout(() => popup.classList.add('popup-minimized'), 2000);
+
+            let timeLeft = data.timeLimit;
+            document.getElementById('draft-timer').innerText = timeLeft;
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById('draft-timer').innerText = timeLeft;
+                if(timeLeft <= 0) clearInterval(timerInterval);
+            }, 1000);
+        });
+
+        function placePlayer(slotId, slotElement) {
+            if(!currentDraftPlayer || slotElement.classList.contains('player-placed')) return;
+            
+            slotElement.innerText = currentDraftPlayer.name.substring(0, 3);
+            slotElement.classList.add('player-placed');
+            socket.emit('playerPlaced', myRoomCode, slotId, currentDraftPlayer);
+            currentDraftPlayer = null;
+        }
+
+        socket.on('forceRandomPlacement', () => {
+            const emptySlots = Array.from(document.getElementById('draft-pitch').children)
+                                    .filter(el => !el.classList.contains('player-placed'));
+            if(emptySlots.length > 0) {
+                emptySlots[Math.floor(Math.random() * emptySlots.length)].click();
+            }
+        });
+
+        // --- 매치 ---
+        socket.on('matchStarted', () => { showScreen('screen-match'); });
+
+        socket.on('matchUpdate', (data) => {
+            const min = Math.floor(data.gameMinute);
+            const sec = Math.floor((data.gameMinute * 60) % 60);
+            document.getElementById('match-clock').innerText = 
+                `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            document.getElementById('match-event').innerText = data.event;
+        });
+    </script>
+</body>
+</html>
