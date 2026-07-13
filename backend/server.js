@@ -148,8 +148,8 @@ function nextDraftTurn(roomCode) {
             if (!hasPlaced) {
                 // [inference] 하드코딩된 0~9 대신 포메이션의 실제 키값을 기준으로 빈자리를 찾도록 수정
                 const formationData = Array.isArray(db.formations) 
-                    ? db.formations.find(f => f.id === pData.formation).positions 
-                    : db.formations[pData.formation].positions;
+                    ? db.formations.find(f => f.id === pData.formation)?.positions   // ?. 추가
+                    : db.formations[pData.formation]?.positions;
                 
                 const allSlots = Object.keys(formationData); // 배열 인덱스 또는 객체의 문자열 키
                 const filledSlots = pData.team.map(t => String(t.slot)); // 비교를 위해 전부 문자열 변환
@@ -205,7 +205,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             : db.formations[p2Data.formation]?.positions;
             
         if (!p1Formation || !p2Formation) {
-            console.error("🔥 포메이션 데이터를 읽어오지 못했습니다. 확인이 필요합니다.");
+            console.error("🔥 포메이션 데이터를 읽어오지 못했습니다.", {
+                p1FormationId: p1Data.formation,
+                p2FormationId: p2Data.formation,
+                availableFormations: Array.isArray(db.formations) 
+                    ? db.formations.map(f => f.id) 
+                    : Object.keys(db.formations)
+            });
+            // return; 대신 아래처럼 fallback으로라도 시작하게 하거나, 에러 emit
+            io.to(roomCode).emit('error', '포메이션 데이터 오류로 경기를 시작할 수 없습니다.');
             return;
         }
 
