@@ -353,8 +353,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
     if (!isSecondHalf) {
         const playerIds = Object.keys(room.players);
         const p1Data = room.players[playerIds[0]], p2Data = room.players[playerIds[1]];
-        const p1Formation = db.formations[p1Data.formation].positions, p2Formation = db.formations[p2Data.formation].positions;
-        const gkStats = { spd: 85, sht: 85, pas: 80 }; 
+        
+        const p1Formation = Array.isArray(db.formations) 
+            ? db.formations.find(f => f.id === p1Data.formation).positions 
+            : db.formations[p1Data.formation].positions;
+            
+        const p2Formation = Array.isArray(db.formations) 
+            ? db.formations.find(f => f.id === p2Data.formation).positions 
+            : db.formations[p2Data.formation].positions;
+            
+        const gkStats = { spd: 85, sht: 85, pas: 80 };
 
         room.matchState = {
             ticks: 0, half: 1, score: { team1: 0, team2: 0 }, 
@@ -640,25 +648,39 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
                 } 
                 else {
-                    // ★ 슈팅 타이밍 난수화 (20~35 거리 안에서 예상치 못한 타이밍에 슈팅)
+                    // 슈팅 타이밍 난수화
                     let dynamicShootThreshold = 20 + Math.random() * 15; 
                     
                     if (distToGoal < dynamicShootThreshold && (!enemyAhead || Math.random() < 0.4)) {
                         io.to(roomCode).emit('playSound', 'kick');
                         
-                        // ★ 슈팅 파워 및 타겟 난수화 (가운데로만 차지 않음)
                         let power = ((p.stats.sht || 85) / 15) * (0.9 + Math.random() * 0.3); 
                         
-                        // Y좌표 42~47(좌측 구석) 또는 53~58(우측 구석)을 랜덤하게 노림
-                        let cornerAimY = 50 + (Math.random() < 0.5 ? -1 : 1) * (4 + Math.random() * 4);
+                        // [addition] 지능적 파포스트 역산 AI
+                        let enemyGk = state.players.find(e => e.team !== p.team && e.role === 'GK');
+                        let cornerAimY = 50; // 기본 중앙
                         
-                        // 초장거리 슈팅일 경우 정확도가 떨어지게 설계
+                        if (enemyGk) {
+                            // 골키퍼가 Y축 중앙(50)을 기준으로 어디로 치우쳐 있는지 역산
+                            if (enemyGk.y > 52) {
+                                // 키퍼가 아래쪽으로 쏠려 있으면 위쪽 구석(42~46)을 노림
+                                cornerAimY = 42 + Math.random() * 4; 
+                            } else if (enemyGk.y < 48) {
+                                // 키퍼가 위쪽으로 쏠려 있으면 아래쪽 구석(54~58)을 노림
+                                cornerAimY = 54 + Math.random() * 4; 
+                            } else {
+                                // 정중앙을 지키고 있다면 랜덤하게 양옆 구석 중 하나를 찌름
+                                cornerAimY = 50 + (Math.random() < 0.5 ? -1 : 1) * (5 + Math.random() * 3); 
+                            }
+                        }
+
+                        // 초장거리 슈팅일 경우 거리에 비례하여 궤적이 흔들리도록 페널티 부여
                         if (distToGoal > 28) cornerAimY += (Math.random() - 0.5) * 8; 
 
                         state.ball.vx = ((targetGoalX - p.x) / distToGoal) * power;
                         state.ball.vy = ((cornerAimY - p.y) / distToGoal) * power;
                         p.cooldown = 12; // 슈팅 후 딜레이
-                    } 
+                    }
                     else {
                         let isFinalThirdAtt = (p.team === 1 && p.x > 66) || (p.team === 2 && p.x < 34);
                         let isWinger = p.y < 25 || p.y > 75;
