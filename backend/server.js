@@ -60,6 +60,8 @@ io.on('connection', (socket) => {
             socket.join(roomCode);
             socket.emit('roomJoined', roomCode, db); 
             io.to(roomCode).emit('playerJoinedLobby'); 
+        } else {
+            socket.emit('error', '방이 가득 찼거나 존재하지 않는 코드입니다.');
         }
     });
 
