@@ -81,7 +81,7 @@ io.on('connection', (socket) => {
     socket.on('playerPlaced', (roomCode, slotId, playerInfo) => {
         const room = rooms[roomCode];
         if(!room || !room.currentDraft) return;
-        const isP1 = room.players[socket.id].id === 'player1';
+        const isP1 = room.players[socket.id] && room.players[socket.id].id === 'player1';
         if (isP1 && room.currentDraft.p1Placed) return;
         if (!isP1 && room.currentDraft.p2Placed) return;
 
@@ -90,7 +90,14 @@ io.on('connection', (socket) => {
         if (isP1) room.currentDraft.p1Placed = true;
         else room.currentDraft.p2Placed = true;
 
-        if (room.currentDraft.answers === 2) { clearTimeout(room.draftTimeout); room.draftCount++; nextDraftTurn(roomCode); }
+        if (room.currentDraft.answers === 2) { 
+            if (room.draftTimeout) { 
+                clearTimeout(room.draftTimeout); 
+                room.draftTimeout = null; 
+            }
+            room.draftCount++; 
+            nextDraftTurn(roomCode); 
+        }
     });
 
     socket.on('swapPlayers', (roomCode, teamId, id1, id2) => {
@@ -115,20 +122,42 @@ function startDraftPhase(roomCode) {
 
 function nextDraftTurn(roomCode) {
     const room = rooms[roomCode];
+    if (!room) return;
+
+    // 이전 턴의 타임아웃 완전히 취소 (stale timeout으로 인한 상태 오염 방지)
+    if (room.draftTimeout) {
+        clearTimeout(room.draftTimeout);
+        room.draftTimeout = null;
+    }
+
     if (room.draftCount >= 10) { startMatchPhase(roomCode, false); return; }
+
     function pullRandomPlayer() {
         if(room.availablePlayers.length === 0) return null;
         const idx = Math.floor(Math.random() * room.availablePlayers.length);
         return room.availablePlayers.splice(idx, 1)[0];
     }
     const p1Player = pullRandomPlayer(), p2Player = pullRandomPlayer();
-    room.currentDraft = { p1: p1Player, p2: p2Player, answers: 0, p1Placed: false, p2Placed: false };
+
+    // 고유 턴 ID로 stale timeout 감지 (중간에 클릭 안 되는 현상 + 자동 진행 안 되는 버그 해결)
+    const turnId = Date.now().toString(36) + '-' + room.draftCount + '-' + Math.random().toString(36).slice(2, 8);
+    room.currentDraft = { 
+        p1: p1Player, 
+        p2: p2Player, 
+        answers: 0, 
+        p1Placed: false, 
+        p2Placed: false,
+        _turnId: turnId   // 클라이언트가 이 턴의 카드를 보고 있을 때만 유효
+    };
     io.to(roomCode).emit('draftPlayer', { p1: p1Player, p2: p2Player, timeLimit: room.settings.timer });
     
     room.draftTimeout = setTimeout(() => { 
-        if(!room || !room.currentDraft) return;
+        if (!room || !room.currentDraft || room.currentDraft._turnId !== turnId) return; // 오래된 타임아웃 무시
+        if (!room.players) return;
+
         Object.keys(room.players).forEach(pId => {
             const pData = room.players[pId];
+            if (!pData) return;
             const isP1 = pData.id === 'player1';
             const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
             if (!hasPlaced) {
@@ -144,7 +173,10 @@ function nextDraftTurn(roomCode) {
                 if(isP1) room.currentDraft.p1Placed = true; else room.currentDraft.p2Placed = true;
             }
         });
-        if (room.currentDraft.answers >= 2) { room.draftCount++; nextDraftTurn(roomCode); }
+        if (room.currentDraft.answers >= 2) { 
+            room.draftCount++; 
+            nextDraftTurn(roomCode); 
+        }
     }, room.settings.timer * 1000 + 1000);
 }
 
@@ -287,7 +319,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         else if(minDist2 <= minDist1 && minDist2 < 10) state.possessionTeam = 2;
         const attTeam = state.possessionTeam;
 
-        // --- 4. ★ 완벽한 지역 방어 + 적극적 CB 마킹 + 루즈볼/세컨볼 강화 + 모든 AI 변칙적 움직임 ---
+        // --- 4. ★ 완벽한 지역 방어 및 변칙적 오프더볼 AI ---
         state.players.forEach(p => {
             if (p.cooldown > 0) p.cooldown--;
             let targetX = p.baseX, targetY = p.baseY;
@@ -298,107 +330,72 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             let rankObj = myDistArr.find(obj => obj.p === p);
             let rank = rankObj ? myDistArr.indexOf(rankObj) : 999;
             let distToBall = rankObj ? rankObj.dist : 999;
-            let ballSpeed = Math.sqrt(state.ball.vx * state.ball.vx + state.ball.vy * state.ball.vy);
-            let isLooseBall = ballSpeed > 1.8 || (minDist1 > 7 && minDist2 > 7);
+
             let isFinalThirdDef = getDistance(state.ball.x, state.ball.y, ownGoalX, 50) < 35;
 
-            // ★ 고유 플레이어 변칙성 (단조로운 반복 패턴 완전 배제 - 매 경기/매 플레이마다 다른 동선)
-            let t = state.ticks;
-            let seed = ((p.id || 'p').toString().split('').reduce((a, c) => a + c.charCodeAt(0), 0) + Math.floor(p.baseX * 1.3) + Math.floor(p.baseY)) % 997;
-            let personalPhase = seed * 0.021 + (p.baseY % 17) * 0.11;
-            // 다층 주파수 사인파 + 개인 위상으로 유기적이고 예측 불가능한 움직임 생성
-            let v1 = Math.sin(t / 21 + personalPhase + p.baseY * 0.012) * 8.0;
-            let v2 = Math.sin(t / 36 + personalPhase * 0.65 + p.baseX * 0.008) * 6.0;
-            let v3 = Math.sin(t / 49 + personalPhase * 1.35) * 4.2;
-            let defendJitter = v3 * 0.7;
-
-            // ★ 스마트 다중 압박 + 루즈볼/세컨볼/빈공간 볼 강하게 탈취
+            // ★ 스마트 다중 압박 체계
             let isPressing = false;
             if (p.role !== 'GK') {
                 if (rank === 0) isPressing = true;
-                else if (rank <= 1 && (isFinalThirdDef || isLooseBall) && distToBall < 18) isPressing = true;
-                else if (rank === 1 && distToBall < 9) isPressing = true;
-                else if (rank === 2 && isLooseBall && distToBall < 15) isPressing = true; // 세컨볼/루즈볼 적극 추격
+                else if (rank === 1 && isFinalThirdDef && distToBall < 15) isPressing = true;
+                else if (rank === 1 && distToBall < 8) isPressing = true;
             }
 
             if (p.role === 'GK') {
-                targetX = ownGoalX + (dir * 2) + v3 * 0.25;
-                targetY = Math.max(40, Math.min(60, state.ball.y + v2 * 0.15)); 
-                if(distToBall < 10) { targetX = state.ball.x + v1 * 0.08; targetY = state.ball.y; }
+                targetX = ownGoalX + (dir * 2);
+                targetY = Math.max(42, Math.min(58, state.ball.y)); 
+                if(distToBall < 10) { targetX = state.ball.x; targetY = state.ball.y; }
             } 
             else if (isPressing) {
-                targetX = state.ball.x + v1 * 0.12; targetY = state.ball.y + v2 * 0.08; 
+                targetX = state.ball.x; targetY = state.ball.y; 
             } 
             else if (attTeam === p.team) {
-                // 공격 오프더볼: 다층 변칙 사인 + 상황별 의도(컷인/와이드)로 매번 다른 침투/스위칭
+                // [개선됨] 공격 시 변칙적인 오프더볼 무브먼트 (사인파 난수를 이용한 스위칭 플레이 및 침투)
+                // 시간(ticks)과 선수의 기본 위치를 조합해 매번 다른 공간을 찾아 들어가도록 설계
+                let attackVariant = Math.sin(state.ticks / 30 + p.baseY); 
+                
                 if (p.role === 'DF') { 
-                    targetX = Math.max(18, Math.min(82, state.ball.x - (dir * 15) + v1 * 0.35)); 
-                    targetY = p.baseY + v1 * 0.55 + v2 * 0.35; 
+                    targetX = Math.max(25, Math.min(75, state.ball.x - (dir * 18))); 
+                    targetY = p.baseY + attackVariant * 5; // 풀백의 오버래핑 변주
                 } 
                 else if (p.role === 'MF') { 
-                    targetX = Math.max(28, Math.min(72, state.ball.x + (dir * 9) + v2 * 0.45)); 
-                    targetY = p.baseY + v1 * 1.1 + v3 * 0.9; 
+                    targetX = Math.max(35, Math.min(65, state.ball.x + (dir * 12))); 
+                    targetY = p.baseY + attackVariant * 15; // 미드필더들의 유기적인 스위칭
                 } 
                 else if (p.role === 'FW') { 
-                    // FW 공격 위치/타이밍 변주: 박스 안에서 컷인 or 스테이 와이드 → 슈팅 위치/각도 매번 다름
-                    let inBox = (p.team === 1 && p.x > 74) || (p.team === 2 && p.x < 26);
-                    let cutIntent = Math.sin(t / 17 + personalPhase) > -0.1; 
-                    if (inBox && cutIntent) {
-                        targetX = (p.team === 1) ? 91 + v2 * 0.7 : 9 - v2 * 0.7;
-                        targetY = 50 + v1 * 1.6; // 중앙 컷인으로 다양한 슈팅 각도 유도
-                    } else {
-                        targetX = (p.team === 1) ? 84 + v1 * 1.1 : 16 - v1 * 1.1; 
-                        targetY = p.baseY + v2 * 1.7 + (cutIntent ? v3 * 1.5 : -v3 * 0.8);
-                    }
+                    targetX = (p.team === 1) ? 88 + attackVariant * 5 : 12 - attackVariant * 5; 
+                    targetY = p.baseY + attackVariant * 15; // 공격수의 대각선 침투 (더미 런)
                 }
             } 
             else {
-                // 수비: CB가 가장 위협적인 공격수를 적극적으로 마킹 (중앙 공간 최소화)
+                // [수비 시 중앙 수비망]
                 if (p.role === 'DF') { 
-                    // 가장 위협적인 상대 (전진한 FW/MF) 탐색
-                    let threat = null; let bestThreatScore = -Infinity;
-                    state.players.forEach(op => {
-                        if (op.team !== p.team && (op.role === 'FW' || (op.role === 'MF' && isFinalThirdDef))) {
-                            let advanced = (p.team === 1 ? (100 - op.x) : op.x);
-                            let central = 12 - Math.min(12, Math.abs(op.y - 50));
-                            let distMe = getDistance(p.x, p.y, op.x, op.y);
-                            let threatScore = advanced * 1.6 - distMe * 0.7 + central * 0.9;
-                            if (threatScore > bestThreatScore) { bestThreatScore = threatScore; threat = op; }
-                        }
-                    });
-                    if (threat && bestThreatScore > 4 && distToBall < 38) {
-                        // 골키퍼 쪽(골사이드)에서 타이트 마킹 + 약간의 지터
-                        targetX = Math.max(4, Math.min(96, threat.x - dir * (isFinalThirdDef ? 3.5 : 7) + defendJitter * 0.4));
-                        targetY = threat.y * 0.62 + p.baseY * 0.38 + defendJitter * 0.6;
-                    } else if (isFinalThirdDef) {
-                        targetX = ownGoalX + (dir * 11) + defendJitter * 0.3;
-                        targetY = p.baseY * 0.22 + 50 * 0.78 + defendJitter * 0.9; // 더 강한 중앙 압축
+                    if (isFinalThirdDef) {
+                        targetX = ownGoalX + (dir * 15);
+                        targetY = p.baseY * 0.4 + 50 * 0.6; 
                     } else {
-                        targetX = Math.max(10, Math.min(90, state.ball.x - (dir * 17) + defendJitter * 0.35)); 
-                        targetY = p.baseY * 0.65 + state.ball.y * 0.35 + defendJitter * 0.6; // 중앙 커버 강화
+                        targetX = Math.max(15, Math.min(85, state.ball.x - (dir * 20))); 
+                        targetY = p.baseY; 
                     }
                 } 
                 else if (p.role === 'MF') { 
                     if (isFinalThirdDef) {
-                        targetX = ownGoalX + (dir * 20) + defendJitter * 0.4;
-                        targetY = p.baseY * 0.38 + 50 * 0.62 + defendJitter;
+                        targetX = ownGoalX + (dir * 25);
+                        targetY = p.baseY * 0.5 + 50 * 0.5;
                     } else {
-                        targetX = state.ball.x - (dir * 7) + v2 * 0.25; targetY = p.baseY * 0.55 + state.ball.y * 0.45 + defendJitter; 
+                        targetX = state.ball.x - (dir * 10); targetY = p.baseY; 
                     }
                 } 
                 else if (p.role === 'FW') { 
-                    targetX = state.ball.x + (dir * 9) + v1 * 0.35; targetY = p.baseY + defendJitter * 0.65;
+                    targetX = state.ball.x + (dir * 12); targetY = p.baseY;
                 }
             }
 
-            // 동료와 겹치지 않도록 밀어내기 (약간의 랜덤으로 자연스러움 추가)
+            // 동료와 겹치지 않도록 밀어내기
             state.players.forEach(mate => {
                 if (mate !== p && mate.team === p.team && mate.role !== 'GK') {
-                    let dM = getDistance(p.x, p.y, mate.x, mate.y);
-                    if (dM < 11) { 
-                        let push = (11.5 - dM) * 1.25;
-                        targetX += (p.x - mate.x) / (dM || 1) * push + (Math.random() - 0.5) * 0.6;
-                        targetY += (p.y - mate.y) / (dM || 1) * push + (Math.random() - 0.5) * 0.6;
+                    if (getDistance(p.x, p.y, mate.x, mate.y) < 12) { 
+                        targetX += (p.x - mate.x) * 1.5; targetY += (p.y - mate.y) * 1.5;
                     }
                 }
             });
@@ -406,17 +403,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             targetX = Math.max(3, Math.min(97, targetX));
             targetY = Math.max(3, Math.min(97, targetY));
 
-            let baseSpeedFactor = (0.80 + Math.random() * 0.38);
-            let moveSpeed = ((p.stats.spd || 80) / 100) * baseSpeedFactor; 
-            if (isPressing) moveSpeed *= (isLooseBall ? 1.58 : 1.32); 
+            let moveSpeed = ((p.stats.spd || 80) / 100) * (0.85 + Math.random() * 0.3); 
+            if (isPressing) moveSpeed *= 1.3; 
             
             let distToTarget = getDistance(p.x, p.y, targetX, targetY);
-            if (distToTarget > moveSpeed * 0.75) {
+            if (distToTarget > moveSpeed) {
                 p.x += ((targetX - p.x) / distToTarget) * moveSpeed;
                 p.y += ((targetY - p.y) / distToTarget) * moveSpeed;
             }
 
-            // --- 5. 터치 및 스마트 결정 로직 (슈팅 위치/타이밍/에임 완전 변칙화 + 루즈볼 대응 강화) ---
+            // --- 5. 터치 및 스마트 결정 로직 ---
             let touchRadius = p.role === 'GK' ? 4 : 3; 
             let distToBallAct = getDistance(p.x, p.y, state.ball.x, state.ball.y);
 
@@ -429,19 +425,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 state.players.forEach(e => {
                     if (e.team !== p.team && e.role !== 'GK') {
                         let d = getDistance(p.x, p.y, e.x, e.y);
-                        if (d < 11 && ((p.team === 1 && e.x > p.x) || (p.team === 2 && e.x < p.x))) { enemyAhead = true; }
+                        // 전방에 상대방이 있는지 체크하는 로직
+                        if (d < 12 && ((p.team === 1 && e.x > p.x) || (p.team === 2 && e.x < p.x))) { enemyAhead = true; }
                     }
                 });
-
-                // 슈팅 확률 계산 (위치/각도/스페이스에 따라 매번 다르게 결정)
-                let shootProb = 0.38;
-                let angleFactor = 0.55;
-                if (distToGoal < 32) {
-                    angleFactor = 1 - Math.min(1, Math.abs(p.y - 50) / 20);
-                    let spaceFactor = enemyAhead ? 0.28 : 1.05;
-                    shootProb = 0.42 + angleFactor * 0.37 + spaceFactor * 0.23;
-                    if (shootProb > 0.93) shootProb = 0.93;
-                }
 
                 if (p.role === 'GK') {
                     let isInBox = Math.abs(p.x - ownGoalX) < 20 && p.y > 20 && p.y < 80;
@@ -454,36 +441,30 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         state.ball.vx = dir * 6.0; state.ball.vy = (p.y > 50) ? 3.0 : -3.0; p.cooldown = 15;
                     }
                 } 
-                else if (distToGoal < 30 && Math.random() < shootProb && (!enemyAhead || Math.random() < 0.58)) {
-                    // ★ 슈팅 변칙화: 에임 포인트(골대 내 랜덤), 파워 변동, 쿨타임 변동, 스웨이브
-                    // → 매번 다른 위치/타이밍/각도로 슈팅. 가운데만 노리는 문제 해결
+                else if (distToGoal < 28 && (!enemyAhead || Math.random() < 0.5)) {
+                    // 슈팅 결정
                     io.to(roomCode).emit('playSound', 'kick');
-                    let power = (p.stats.sht || 85) / 14.2 * (0.87 + Math.random() * 0.26);
-                    // 골대 안 다양한 지점 노림 (중앙/니어포스트/파포스트 랜덤)
-                    let aimSpread = 9.5 + Math.random() * 9.5;
-                    let aimY = 50 + (Math.random() - 0.5) * aimSpread * (0.7 + angleFactor * 0.6 || 0.8);
-                    aimY = Math.max(38.5, Math.min(61.5, aimY));
-                    let dx = targetGoalX - p.x;
-                    let dy = aimY - p.y;
-                    let d = Math.sqrt(dx * dx + dy * dy) || 1;
-                    state.ball.vx = (dx / d) * power * (0.90 + Math.random() * 0.18);
-                    state.ball.vy = (dy / d) * power * (0.88 + Math.random() * 0.22) + (Math.random() - 0.5) * 0.38;
-                    p.cooldown = 7 + Math.floor(Math.random() * 6); // 7~12 틱 변동 (타이밍 다양화)
+                    let power = (p.stats.sht || 85) / 15; 
+                    state.ball.vx = ((targetGoalX - p.x) / distToGoal) * power;
+                    // 물리엔진의 난수는 최소화하여 골대를 향하도록 유지
+                    state.ball.vy = ((50 - p.y) / distToGoal) * power + (Math.random()-0.5)*0.2;
+                    p.cooldown = 10;
                 } 
                 else {
                     let isFinalThirdAtt = (p.team === 1 && p.x > 66) || (p.team === 2 && p.x < 34);
                     let isWinger = p.y < 25 || p.y > 75;
 
-                    if (isFinalThirdAtt && isWinger && Math.random() < 0.58) {
+                    if (isFinalThirdAtt && isWinger && Math.random() < 0.6) {
                         let strikersInBox = state.players.filter(m => m.team === p.team && m !== p && Math.abs(m.y - 50) < 30 && m.role !== 'DF');
                         if (strikersInBox.length > 0) {
                             let target = strikersInBox[Math.floor(Math.random() * strikersInBox.length)];
                             io.to(roomCode).emit('playSound', 'kick');
-                            let power = (p.stats.pas || 80) / 17.5;
+                            let power = (p.stats.pas || 80) / 18;
                             let d = getDistance(p.x, p.y, target.x, target.y);
                             state.ball.vx = ((target.x - p.x) / d) * power;
-                            state.ball.vy = ((target.y - p.y) / d) * power + (Math.random() - 0.5) * 0.6;
-                            p.cooldown = 9 + Math.floor(Math.random() * 4); 
+                            // 크로스가 너무 크게 엇나가지 않도록 난수 조절
+                            state.ball.vy = ((target.y - p.y) / d) * power;
+                            p.cooldown = 10; 
                             return; 
                         }
                     }
@@ -494,7 +475,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let forwardDist = (p.team === 1) ? (m.x - p.x) : (p.x - m.x); 
                             let dist = getDistance(p.x, p.y, m.x, m.y);
                             
-                            let visionCreativity = (Math.random() * 38) - 9;
+                            // [개선됨] 패스 선택의 변칙성 부여 (창조적 시야)
+                            // 매 틱마다 랜덤한 시야 가산점을 부여하여 매번 다른 동료를 선택하도록 유도
+                            let visionCreativity = (Math.random() * 40) - 10;
                             let score = (forwardDist * 4) - dist + visionCreativity; 
                             
                             let enemyNearMate = false;
@@ -510,22 +493,29 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     });
 
                     if ((enemyAhead || maxScore > 10) && bestMate) {
+                        // 패스
                         io.to(roomCode).emit('playSound', 'kick');
-                        let power = (p.stats.pas || 80) / 19.5; 
+                        let power = (p.stats.pas || 80) / 20; 
                         let d = getDistance(p.x, p.y, bestMate.x, bestMate.y);
+                        
+                        // 공이 동료를 향해 정확히 가도록 난수를 제거하여 허무하게 뺏기는 것 방지
                         state.ball.vx = ((bestMate.x - p.x) / d) * power;
-                        state.ball.vy = ((bestMate.y - p.y) / d) * power + (Math.random() - 0.5) * 0.25;
-                        p.cooldown = 9 + Math.floor(Math.random() * 3); 
+                        state.ball.vy = ((bestMate.y - p.y) / d) * power;
+                        p.cooldown = 10; 
                     } 
                     else {
+                        // [개선됨] 드리블 시 헌납 방지 로직
+                        // 빈 공간으로 드리블하되 쿨타임을 1로 줄여 선수가 공을 계속 달고 뛰게 함
                         let dodgeY = (p.y > 50) ? -1 : 1;
-                        if (enemyAhead) {
-                            state.ball.vx = dir * 1.45;
-                            state.ball.vy = dodgeY * 2.1; 
-                        } else {
-                            state.ball.vx = dir * 1.75;
-                            state.ball.vy = (Math.random() - 0.5) * 0.55;
+                        if (enemyAhead) { // 적이 앞에 있으면 대각선으로 치고 달림
+                            state.ball.vx = dir * 1.5;
+                            state.ball.vy = dodgeY * 2.0; 
+                        } else { // 적이 없으면 정면으로 짧게 치고 달림
+                            state.ball.vx = dir * 1.8;
+                            state.ball.vy = (Math.random() - 0.5) * 0.5; // 약간의 흔들림만 추가
                         }
+                        
+                        // ★ 제일 중요한 부분: 쿨타임을 1~2틱으로 대폭 줄여서 내 선수가 공을 쫓아갈 수 있게 함
                         p.cooldown = 2;
                     }
                 }
