@@ -102,7 +102,40 @@ io.on('connection', (socket) => {
         const room = rooms[roomCode];
         room.state = 'match';
         room.matchTime = 0; 
-        io.to(roomCode).emit('matchStarted');
+        
+        // --- 킥오프 좌표 계산 로직 시작 ---
+        const playerIds = Object.keys(room.players);
+        const p1Data = room.players[playerIds[0]];
+        const p2Data = room.players[playerIds[1]];
+
+        const p1Formation = db.formations[p1Data.formation].positions;
+        const p2Formation = db.formations[p2Data.formation].positions;
+
+        // 양 팀 선수들에게 풀코트 기준 초기 X, Y 좌표를 부여합니다.
+        const matchState = {
+            team1: p1Data.team.map(t => {
+                const pos = p1Formation[t.slot];
+                return { 
+                    ...t.player, 
+                    team: 1, 
+                    x: pos.x / 2,       // 반코트(100)를 풀코트(50)로 축소
+                    y: pos.y 
+                }; 
+            }),
+            team2: p2Data.team.map(t => {
+                const pos = p2Formation[t.slot];
+                return { 
+                    ...t.player, 
+                    team: 2, 
+                    x: 100 - (pos.x / 2), // 오른쪽으로 밀어내고 좌우 반전
+                    y: 100 - pos.y        // 상하 반전 (180도 회전)
+                }; 
+            })
+        };
+
+        // 계산된 초기 좌표와 함께 클라이언트들에게 매치 시작을 알립니다.
+        io.to(roomCode).emit('matchStarted', matchState);
+        // --- 킥오프 좌표 계산 로직 끝 ---
 
         room.matchInterval = setInterval(() => {
             room.matchTime++;
@@ -121,6 +154,7 @@ io.on('connection', (socket) => {
                 time: room.matchTime,
                 gameMinute: gameMinute,
                 event: eventType
+                // 추후 이 부분에 변경되는 좌표 데이터를 넣을 예정입니다.
             });
 
             if (room.matchTime === db.settings.halfDurationRealSeconds) {
