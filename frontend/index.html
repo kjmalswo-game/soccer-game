@@ -180,22 +180,41 @@
         socket.on('matchStarted', (matchState) => { 
             showScreen('screen-match'); 
             const pitch = document.getElementById('match-pitch');
-            pitch.innerHTML = ''; // "경기 진행 뷰" 글씨 및 초기화
+            pitch.innerHTML = ''; 
 
-            // 중앙선(하프라인)과 센터 서클 그리기 (디테일 추가)
+            // 축구장 바닥 라인 그리기
             pitch.innerHTML += `
-                <div style="position:absolute; left:50%; top:0; bottom:0; border-left:3px solid white;"></div>
-                <div style="position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); width:100px; height:100px; border:3px solid white; border-radius:50%;"></div>
+                <div style="position:absolute; left:50%; top:0; bottom:0; border-left:3px solid white; opacity: 0.5;"></div>
+                <div style="position:absolute; left:50%; top:50%; transform:translate(-50%, -50%); width:100px; height:100px; border:3px solid white; border-radius:50%; opacity: 0.5;"></div>
             `;
 
-            // 팀 1 배치 (파란색)
-            matchState.team1.forEach(player => {
-                createMatchPlayerNode(pitch, player, '#3867d6');
-            });
+            // 공 (Ball) 생성 (transition으로 부드러운 이동 효과 적용)
+            const ballEl = document.createElement('div');
+            ballEl.id = 'match-ball';
+            ballEl.style.cssText = `
+                width: 15px; height: 15px; background: white; border-radius: 50%; 
+                position: absolute; transform: translate(-50%, -50%); z-index: 10;
+                transition: left 0.1s linear, top 0.1s linear; 
+                box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            `;
+            pitch.appendChild(ballEl);
 
-            // 팀 2 배치 (빨간색)
-            matchState.team2.forEach(player => {
-                createMatchPlayerNode(pitch, player, '#eb3b5a');
+            // 양 팀 선수 생성
+            matchState.players.forEach(player => {
+                const el = document.createElement('div');
+                el.className = 'player-node';
+                el.id = `match-player-${player.team}-${player.id}`; 
+                // ★ 중요: 서버 통신 주기에 맞춰 CSS로 애니메이션을 걸어줍니다. (버벅임 방지)
+                el.style.transition = 'left 0.1s linear, top 0.1s linear';
+                
+                el.style.left = player.x + '%';
+                el.style.top = player.y + '%';
+                el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a'; // 파랑 vs 빨강
+                
+                if(player.stats.spd >= 90 || player.stats.sht >= 90) el.style.border = '2px solid #f1c40f'; 
+
+                el.innerText = player.name.substring(0, 3);
+                pitch.appendChild(el);
             });
         });
 
@@ -218,12 +237,30 @@
             pitch.appendChild(el);
         }
 
+        // 0.1초마다 서버로부터 좌표를 받아와서 위치를 갱신
         socket.on('matchUpdate', (data) => {
+            // 시간 표시
             const min = Math.floor(data.gameMinute);
             const sec = Math.floor((data.gameMinute * 60) % 60);
             document.getElementById('match-clock').innerText = 
                 `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
             document.getElementById('match-event').innerText = data.event;
+
+            // 공 위치 업데이트
+            const ball = document.getElementById('match-ball');
+            if(ball) {
+                ball.style.left = data.ball.x + '%';
+                ball.style.top = data.ball.y + '%';
+            }
+
+            // 모든 선수 위치 업데이트
+            data.players.forEach(p => {
+                const pEl = document.getElementById(`match-player-${p.team}-${p.id}`);
+                if(pEl) {
+                    pEl.style.left = p.x + '%';
+                    pEl.style.top = p.y + '%';
+                }
+            });
         });
     </script>
 </body>
