@@ -343,6 +343,7 @@ io.on('connection', (socket) => {
             }
         });
     });
+});
 
 // Render 등 클라우드 배포 시 자동으로 할당되는 포트를 사용합니다.
 const PORT = process.env.PORT || 3000;
