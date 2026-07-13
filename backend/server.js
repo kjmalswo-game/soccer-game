@@ -352,7 +352,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             if (p.role === 'GK') {
                 targetX = ownGoalX + (dir * 2);
                 targetY = Math.max(40, Math.min(60, state.ball.y)); 
-                if(distToBall < 18) { targetX = state.ball.x; targetY = state.ball.y; }
+                if(distToBall < 22) { targetX = state.ball.x; targetY = state.ball.y; }
             } 
             else if (isPressing) {
                 targetX = state.ball.x; targetY = state.ball.y; 
@@ -390,7 +390,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             }
 
             // --- 5. 터치 및 스마트 결정 로직 (플레이 중에만 가능) ---
-            let touchRadius = p.role === 'GK' ? 6 : 3; 
+            let touchRadius = p.role === 'GK' ? 4.5 : 3; 
             let distToBallAct = getDistance(p.x, p.y, state.ball.x, state.ball.y);
 
             // ★ phase가 'play' 일때만 공을 건드릴 수 있음 (키퍼가 들고있을 때 스틸 불가능)
