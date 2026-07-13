@@ -324,29 +324,48 @@ function nextDraftTurn(roomCode) {
     io.to(roomCode).emit('draftPlayer', { p1: p1Player, p2: p2Player, timeLimit: room.settings.timer });
     
     room.draftTimeout = setTimeout(() => { 
-            if(!room || !room.currentDraft) return;
-            Object.keys(room.players).forEach(pId => {
-                const pData = room.players[pId];
-                const isP1 = pData.id === 'player1';
-                const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
-                if (!hasPlaced) {
-                    const filledSlots = pData.team.map(t => {
-                        const num = String(t.slot).replace(/[^0-9]/g, '');
-                        return num ? parseInt(num, 10) : -1;
-                    });
-                    let emptySlot = -1;
-                    for(let i = 0; i < 10; i++) { if(!filledSlots.includes(i)) { emptySlot = i; break; } }
-                    if(emptySlot !== -1) {
-                        const assignedPlayer = isP1 ? room.currentDraft.p1 : room.currentDraft.p2;
-                        pData.team.push({ slot: emptySlot, player: assignedPlayer });
-                        io.to(pId).emit('autoPlaced', emptySlot, assignedPlayer); 
-                    }
-                    room.currentDraft.answers++;
-                    if(isP1) room.currentDraft.p1Placed = true; else room.currentDraft.p2Placed = true;
+        if(!room || !room.currentDraft) return;
+        Object.keys(room.players).forEach(pId => {
+            const pData = room.players[pId];
+            const isP1 = pData.id === 'player1';
+            const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
+            
+            if (!hasPlaced) {
+                // [inference] 하드코딩된 0~9 대신 포메이션의 실제 키값을 기준으로 빈자리를 찾도록 수정
+                const formationData = Array.isArray(db.formations) 
+                    ? db.formations.find(f => f.id === pData.formation).positions 
+                    : db.formations[pData.formation].positions;
+                
+                const allSlots = Object.keys(formationData); // 배열 인덱스 또는 객체의 문자열 키
+                const filledSlots = pData.team.map(t => String(t.slot)); // 비교를 위해 전부 문자열 변환
+                
+                // 남은 슬롯 중 아직 채워지지 않은 첫 번째 빈자리 찾기
+                const emptySlot = allSlots.find(slot => !filledSlots.includes(slot));
+                
+                if(emptySlot !== undefined) {
+                    const assignedPlayer = isP1 ? room.currentDraft.p1 : room.currentDraft.p2;
+                    // 기존 데이터 타입 유지 (배열이면 정수로, 객체면 문자열로 저장)
+                    const finalSlot = Array.isArray(formationData) ? parseInt(emptySlot) : emptySlot;
+                    
+                    pData.team.push({ slot: finalSlot, player: assignedPlayer });
+                    io.to(pId).emit('autoPlaced', finalSlot, assignedPlayer); 
                 }
-            });
-            if (room.currentDraft.answers >= 2) { room.draftCount++; nextDraftTurn(roomCode); }
-        }, room.settings.timer * 1000 + 1000);
+                room.currentDraft.answers++;
+                if(isP1) room.currentDraft.p1Placed = true; else room.currentDraft.p2Placed = true;
+            }
+        });
+
+        if (room.currentDraft.answers === 2) { 
+            clearTimeout(room.draftTimeout); 
+            room.draftCount++; 
+            
+            if (room.draftCount >= 10) {
+                setTimeout(() => nextDraftTurn(roomCode), 1000);
+            } else {
+                nextDraftTurn(roomCode); 
+            }
+        }
+    }, room.settings.timer * 1000 + 1000);
 }
 
 function startMatchPhase(roomCode, isSecondHalf = false) {
