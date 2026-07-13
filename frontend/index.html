@@ -253,28 +253,114 @@
 
         // 0.1초마다 서버로부터 좌표를 받아와서 위치를 갱신
         socket.on('matchUpdate', (data) => {
-            // 시간 표시
             const min = Math.floor(data.gameMinute);
             const sec = Math.floor((data.gameMinute * 60) % 60);
             document.getElementById('match-clock').innerText = 
                 `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
             document.getElementById('match-event').innerText = data.event;
+            
+            // 스코어 업데이트
+            document.getElementById('score-display').innerText = `${data.score.team1} : ${data.score.team2}`;
 
-            // 공 위치 업데이트
             const ball = document.getElementById('match-ball');
-            if(ball) {
-                ball.style.left = data.ball.x + '%';
-                ball.style.top = data.ball.y + '%';
-            }
+            if(ball) { ball.style.left = data.ball.x + '%'; ball.style.top = data.ball.y + '%'; }
 
-            // 모든 선수 위치 업데이트
             data.players.forEach(p => {
                 const pEl = document.getElementById(`match-player-${p.team}-${p.id}`);
-                if(pEl) {
-                    pEl.style.left = p.x + '%';
-                    pEl.style.top = p.y + '%';
+                if(pEl) { pEl.style.left = p.x + '%'; pEl.style.top = p.y + '%'; }
+            });
+        });
+
+        // 득점 알림 처리
+        socket.on('goalScored', (data) => {
+            const popup = document.getElementById('goal-popup');
+            popup.innerText = `TEAM ${data.team} GOAL!!!`;
+            popup.style.display = 'block';
+            setTimeout(() => { popup.style.display = 'none'; }, 2500);
+        });
+
+        // 이벤트(프리킥 등) 알림 처리
+        socket.on('matchEventAlert', (eventName) => {
+            const popup = document.getElementById('goal-popup');
+            popup.innerText = eventName + "!";
+            popup.style.color = "#f7b731"; // 노란색 경고창 느낌
+            popup.style.display = 'block';
+            setTimeout(() => { 
+                popup.style.display = 'none'; 
+                popup.style.color = "gold"; // 다시 골 텍스트 색으로 복구
+            }, 1800);
+        });
+
+        // --- 하프타임 (드래그 앤 드롭) ---
+        let draggedNode = null;
+
+        socket.on('halfTimeStarted', (duration, playersData) => {
+            showScreen('screen-halftime');
+            const hPitch = document.getElementById('halftime-pitch');
+            hPitch.innerHTML = '';
+
+            // 내 팀이 1인지 2인지 확인 (임시로 양 팀 모두 드래그 가능하게 구현)
+            playersData.forEach(player => {
+                const el = document.createElement('div');
+                el.className = 'player-node';
+                el.style.left = player.baseX + '%';
+                el.style.top = player.baseY + '%';
+                el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a';
+                el.innerText = player.name.substring(0, 3);
+                
+                // HTML5 Drag & Drop API 적용
+                el.draggable = true;
+                el.dataset.id = player.id;
+                el.dataset.team = player.team;
+
+                el.addEventListener('dragstart', (e) => {
+                    draggedNode = el;
+                    e.dataTransfer.effectAllowed = "move";
+                });
+
+                hPitch.appendChild(el);
+            });
+
+            // 운동장(pitch)에 드롭했을 때 좌표 이동
+            hPitch.addEventListener('dragover', (e) => { e.preventDefault(); });
+            hPitch.addEventListener('drop', (e) => {
+                e.preventDefault();
+                if(draggedNode) {
+                    // 마우스 드롭 좌표를 %로 변환
+                    const rect = hPitch.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 100;
+                    const y = ((e.clientY - rect.top) / rect.height) * 100;
+                    
+                    draggedNode.style.left = x + '%';
+                    draggedNode.style.top = y + '%';
+                    
+                    // 서버로 변경된 좌표 즉시 전송
+                    socket.emit('updatePositions', myRoomCode, [{
+                        id: parseInt(draggedNode.dataset.id),
+                        team: parseInt(draggedNode.dataset.team),
+                        x: x, y: y
+                    }]);
                 }
             });
+
+            // 타이머
+            let timeLeft = duration;
+            document.getElementById('halftime-timer').innerText = timeLeft;
+            const tInt = setInterval(() => {
+                timeLeft--;
+                document.getElementById('halftime-timer').innerText = timeLeft;
+                if(timeLeft <= 0) clearInterval(tInt);
+            }, 1000);
+        });
+
+        socket.on('secondHalfStarted', () => { showScreen('screen-match'); });
+
+        socket.on('matchEnded', (score) => {
+            showScreen('screen-result');
+            const resultText = document.getElementById('final-result-text');
+            if (score.team1 > score.team2) resultText.innerText = "TEAM 1 승리! 🎉";
+            else if (score.team2 > score.team1) resultText.innerText = "TEAM 2 승리! 🎉";
+            else resultText.innerText = "무승부! 🤝";
         });
     </script>
 </body>
