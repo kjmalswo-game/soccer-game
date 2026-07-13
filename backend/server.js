@@ -57,6 +57,10 @@ function emitUpdate(roomCode, state) {
 
 io.on('connection', (socket) => {
     socket.on('createRoom', () => {
+        if (!db || !db.settings || !db.players) {
+            socket.emit('error', '서버 데이터 로드에 실패했습니다.');
+            return;
+        }
         const roomCode = generateRoomCode();
         rooms[roomCode] = {
             players: { [socket.id]: { id: 'player1', ready: false, team: [] } },
@@ -129,7 +133,7 @@ io.on('connection', (socket) => {
             room.draftCount++; 
             
             if (room.draftCount >= 10) {
-                setTimeout(() => nextDraftTurn(roomCode), 1000);
+                startMatchPhase(roomCode, false);     // ← 즉시 시작
             } else {
                 nextDraftTurn(roomCode); 
             }
@@ -201,7 +205,7 @@ function nextDraftTurn(roomCode) {
             room.draftCount++; 
             
             if (room.draftCount >= 10) {
-                setTimeout(() => nextDraftTurn(roomCode), 1000);
+                startMatchPhase(roomCode, false);     // ← 즉시 시작
             } else {
                 nextDraftTurn(roomCode); 
             }
@@ -224,17 +228,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         
         const p1Formation = db.formations[p1Data.formation]?.positions || [];
         const p2Formation = db.formations[p2Data.formation]?.positions || [];
-            
-        if (!p1Formation || !p2Formation) {
-            console.error("🔥 포메이션 데이터를 읽어오지 못했습니다.", {
-                p1FormationId: p1Data.formation,
-                p2FormationId: p2Data.formation,
-                availableFormations: Array.isArray(db.formations) 
-                    ? db.formations.map(f => f.id) 
-                    : Object.keys(db.formations)
-            });
-            // return; 대신 아래처럼 fallback으로라도 시작하게 하거나, 에러 emit
-            io.to(roomCode).emit('error', '포메이션 데이터 오류로 경기를 시작할 수 없습니다.');
+        
+        if (p1Formation.length === 0 || p2Formation.length === 0) {
+            io.to(roomCode).emit('error', '포메이션 데이터를 불러올 수 없습니다.');
             return;
         }
 
@@ -273,8 +269,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         resetPositions(room.matchState, 2);
     }
 
-    io.to(roomCode).emit('matchStarted', room.matchState);
     io.to(roomCode).emit('playSound', 'whistle');
+
+        if (!isSecondHalf) {
+            io.to(roomCode).emit('matchStarted', room.matchState);
+        } else {
+            io.to(roomCode).emit('secondHalfStarted', room.matchState);
+        }
+        io.to(roomCode).emit('playSound', 'whistle');
 
     room.matchInterval = setInterval(() => {
         const state = room.matchState;
