@@ -183,7 +183,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             if (isNaN(p.cooldown)) p.cooldown = 0;
         });
 
-        // --- 1. 세트피스 로직 (오프사이드 제거) ---
+        // --- 1. 세트피스 로직 ---
         if (state.phase !== 'play') {
             if (state.phase === 'gk_hold' && state.gkHolder) {
                 state.ball.x = state.gkHolder.x + (state.gkHolder.team === 1 ? 1.5 : -1.5); 
@@ -266,12 +266,22 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             }
         }
 
-        // --- 3. 소유권 계산 ---
+        // --- 3. 오프사이드 라인 및 소유권 계산 ---
+        let t2Defenders = [...state.players].filter(p => p.team === 2).sort((a,b) => b.x - a.x); 
+        let offsideLine1 = Math.max(50, state.ball.x); 
+        if (t2Defenders.length > 1) offsideLine1 = Math.max(offsideLine1, t2Defenders[1].x);
+
+        let t1Defenders = [...state.players].filter(p => p.team === 1).sort((a,b) => a.x - b.x); 
+        let offsideLine2 = Math.min(50, state.ball.x);
+        if (t1Defenders.length > 1) offsideLine2 = Math.min(offsideLine2, t1Defenders[1].x);
+
         let distArr1 = [], distArr2 = [];
         state.players.forEach(p => {
             let dist = getDistance(p.x, p.y, state.ball.x, state.ball.y);
             let strayDist = getDistance(p.x, p.y, p.baseX, p.baseY) || 0;
             let pressScore = dist;
+            
+            // 압박 인수인계 보정
             if (strayDist > 15) pressScore += (strayDist - 15) * 2; 
             if (strayDist > 25) pressScore += 500; 
 
@@ -290,7 +300,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
         let ballCarrier = state.players.find(b => b.team === attTeam && getDistance(b.x, b.y, state.ball.x, state.ball.y) < 6);
 
-        // --- 4. 움직임 AI ---
+        // --- 4. 오프더볼 및 수비 AI ---
         state.players.forEach(p => {
             if (p.cooldown > 0) p.cooldown--;
             let targetX = p.baseX, targetY = p.baseY;
@@ -301,7 +311,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             let rankObj = myDistArr.find(obj => obj.p === p);
             let rank = rankObj ? myDistArr.indexOf(rankObj) : 999;
             let distToBall = rankObj ? rankObj.dist : 999;
-            let strayDist = rankObj ? rankObj.strayDist : 0;
             let isFinalThirdDef = getDistance(state.ball.x, state.ball.y, ownGoalX, 50) < 35;
 
             let isPressing = false;
@@ -313,17 +322,34 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 else { targetX = p.baseX; targetY = p.baseY; }
             } 
             else {
-                // 마중 나가기
+                // 수비 AI 및 압박 로직
+                if (p.role !== 'GK' && attTeam !== p.team) {
+                    if (p.role === 'FW') {
+                        // ★ 버그 1 픽스: 최전방 공격수 하프라인 방어 (상대 진영에서만 압박 허용)
+                        let inEnemyHalf = (p.team === 1 && state.ball.x > 55) || (p.team === 2 && state.ball.x < 45);
+                        if (inEnemyHalf && rank === 0 && distToBall < 20) isPressing = true;
+                        else {
+                            isPressing = false;
+                            targetX = (p.team === 1) ? Math.max(55, state.ball.x + 10) : Math.min(45, state.ball.x - 10);
+                            targetY = p.baseY;
+                        }
+                    } else {
+                        // 미드필더, 수비수는 자기 자리 기반 압박
+                        if (rank === 0 && rankObj.strayDist < 20) isPressing = true;
+                        else if (rank === 1 && isFinalThirdDef && distToBall < 12) isPressing = true;
+                        else {
+                            if (p.role === 'DF') { targetX = Math.max(15, Math.min(85, state.ball.x - (dir * 20))); targetY = p.baseY; }
+                            if (p.role === 'MF') { targetX = state.ball.x - (dir * 10); targetY = p.baseY; }
+                        }
+                    }
+                }
+
+                // 공격 AI 및 마중 나가기
                 if (state.passTargetId === p.id) {
                     targetX = state.ball.x; targetY = state.ball.y; 
                     isPressing = true; 
                 }
-                else if (p.role !== 'GK' && attTeam !== p.team) {
-                    if (rank === 0) isPressing = true;
-                    else if (rank === 1 && isFinalThirdDef && distToBall < 15) isPressing = true;
-                }
-
-                if (p.role === 'GK') {
+                else if (p.role === 'GK') {
                     targetX = ownGoalX + (dir * 2); targetY = Math.max(42, Math.min(58, state.ball.y)); 
                     if(distToBall < 10) { targetX = state.ball.x; targetY = state.ball.y; }
                 } 
@@ -337,27 +363,31 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         targetX = state.ball.x + (dir * 2); targetY = state.ball.y;
                     }
                     else if (ballCarrier && p.id !== ballCarrier.id && !state.passTargetId) {
-                        isSupport = true; // ★ 서포트 상태 활성화 (스프린트 발동)
+                        isSupport = true; 
                         let distToCarrier = getDistance(p.x, p.y, ballCarrier.x, ballCarrier.y);
                         
                         if (p.role === 'FW') { 
-                            targetX = (p.team === 1) ? 92 : 8; // 오프사이드 없이 깊게 침투!
+                            // ★ 버그 4 픽스: 오프사이드 꼼수 방지 (선상 유지)
+                            let offLine = (p.team === 1) ? offsideLine1 : offsideLine2;
+                            let myMaxX = offLine - (dir * 1.5);
+                            targetX = p.baseX + (dir * 15);
+                            targetX = (p.team === 1) ? Math.min(targetX, myMaxX) : Math.max(targetX, myMaxX);
                             targetY = p.baseY; 
                         } 
                         else if (p.role === 'MF') { 
                             targetX = Math.max(20, Math.min(80, ballCarrier.x + (dir * 12))); 
                             targetY = p.baseY;
-                            if (distToCarrier < 15) { targetY = ballCarrier.y + (p.baseY > 50 ? 20 : -20); } // 좁으면 확 벌려줌
+                            if (distToCarrier < 15) { targetY = ballCarrier.y + (p.baseY > 50 ? 20 : -20); } 
                         } 
                         else if (p.role === 'DF') { 
                             targetX = Math.max(15, Math.min(85, state.ball.x - (dir * 15))); targetY = p.baseY; 
                         }
 
-                        // 적 피하기 (공간 창출)
+                        // 수비수 피하기
                         let spaceShift = 0;
                         state.players.forEach(e => {
                             if (e.team !== p.team && e.role !== 'GK') {
-                                if (getDistance(targetX, targetY, e.x, e.y) < 12) { spaceShift += (targetY > e.y) ? 8 : -8; }
+                                if (getDistance(targetX, targetY, e.x, e.y) < 10) { spaceShift += (targetY > e.y) ? 8 : -8; }
                             }
                         });
                         targetY += spaceShift;
@@ -365,30 +395,31 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     else {
                         if (p.role === 'DF') { targetX = Math.max(25, Math.min(75, state.ball.x - (dir * 18))); targetY = p.baseY + attackVariant * 5; } 
                         else if (p.role === 'MF') { targetX = Math.max(35, Math.min(65, state.ball.x + (dir * 12))); targetY = p.baseY + attackVariant * 10; } 
-                        else if (p.role === 'FW') { targetX = (p.team === 1) ? 88 : 12; targetY = p.baseY + attackVariant * 10; }
+                        else if (p.role === 'FW') { 
+                            let offLine = (p.team === 1) ? offsideLine1 : offsideLine2;
+                            let myMaxX = offLine - (dir * 1.5);
+                            targetX = p.baseX + (dir * 10);
+                            targetX = (p.team === 1) ? Math.min(targetX, myMaxX) : Math.max(targetX, myMaxX);
+                            targetY = p.baseY + attackVariant * 10; 
+                        }
                     }
-                } 
-                else {
-                    if (p.role === 'DF') { 
-                        if (isFinalThirdDef) { targetX = ownGoalX + (dir * 15); targetY = p.baseY * 0.4 + 50 * 0.6; } 
-                        else { targetX = Math.max(15, Math.min(85, state.ball.x - (dir * 20))); targetY = p.baseY; }
-                    } 
-                    else if (p.role === 'MF') { 
-                        if (isFinalThirdDef) { targetX = ownGoalX + (dir * 25); targetY = p.baseY * 0.5 + 50 * 0.5; } 
-                        else { targetX = state.ball.x - (dir * 10); targetY = p.baseY; }
-                    } 
-                    else if (p.role === 'FW') { targetX = state.ball.x + (dir * 12); targetY = p.baseY; }
                 }
             }
 
+            // 밀어내기 (충돌 방지)
             state.players.forEach(other => {
                 if (other !== p && other.role !== 'GK') {
-                    let d = getDistance(p.x, p.y, other.x, other.y) || 1;
-                    if (d < 4) { 
+                    let d = getDistance(p.x, p.y, other.x, other.y);
+                    if (d > 0 && d < 4) { 
                         let force = (other.team === p.team) ? 1.0 : 1.5; 
-                        if (isPressing || state.passTargetId === p.id) force = 0.05; 
-                        targetX += ((p.x - other.x) / d) * force * 4; 
-                        targetY += ((p.y - other.y) / d) * force * 4; 
+                        // ★ 버그 2 픽스: 춤추기(Freeze) 방지 - 공을 쫓을 땐 충돌 무시
+                        if (isPressing || state.passTargetId === p.id || (ballCarrier && p.id === ballCarrier.id)) {
+                            force = 0; 
+                        }
+                        if (force > 0) {
+                            targetX += ((p.x - other.x) / d) * force * 4; 
+                            targetY += ((p.y - other.y) / d) * force * 4; 
+                        }
                     }
                 }
             });
@@ -396,16 +427,19 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             targetX = isNaN(targetX) ? p.baseX : Math.max(5, Math.min(95, targetX)); 
             targetY = isNaN(targetY) ? p.baseY : Math.max(5, Math.min(95, targetY));
             
-            // ★ 오프더볼 속도 대폭 부스팅
             let moveSpeed = ((p.stats && p.stats.spd ? p.stats.spd : 80) / 100); 
             if (isPressing || state.passTargetId === p.id) moveSpeed *= 1.35; 
-            else if (isSupport) moveSpeed *= 1.3; // 빈 공간 찾아 뛰는 속도 상승
+            else if (isSupport) moveSpeed *= 1.25; 
             else moveSpeed *= (0.85 + Math.random() * 0.3);
             
+            // ★ 버그 2 픽스: 오버슈트 떨림 방지 (자석처럼 스냅)
             let distToTarget = getDistance(p.x, p.y, targetX, targetY) || 1;
             if (distToTarget > moveSpeed) {
                 p.x += ((targetX - p.x) / distToTarget) * moveSpeed;
                 p.y += ((targetY - p.y) / distToTarget) * moveSpeed;
+            } else {
+                p.x = targetX;
+                p.y = targetY;
             }
 
             // --- 5. 터치 및 패스/슛 스마트 판단 ---
@@ -473,69 +507,85 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 else { executePassOrDribble(); }
 
                 function executePassOrDribble() {
+                    let isFinalThirdAtt = (p.team === 1 && p.x > 66) || (p.team === 2 && p.x < 34);
+                    let isWinger = p.y < 25 || p.y > 75;
+
+                    if (isFinalThirdAtt && isWinger && Math.random() < 0.65) {
+                        let strikersInBox = state.players.filter(m => m.team === p.team && m !== p && Math.abs(m.y - 50) < 30 && m.role !== 'DF');
+                        if (strikersInBox.length > 0) {
+                            let target = strikersInBox[Math.floor(Math.random() * strikersInBox.length)];
+                            io.to(roomCode).emit('playSound', 'kick');
+                            let power = ((p.stats && p.stats.pas ? p.stats.pas : 80) / 22);   
+                            let targetX = target.x + dir * 5; 
+                            let d = getDistance(p.x, p.y, targetX, target.y) || 1;
+                            state.ball.vx = ((targetX - p.x) / d) * power;
+                            state.ball.vy = ((target.y - p.y) / d) * power;
+                            state.passTargetId = target.id;
+                            p.cooldown = 10; 
+                            return; 
+                        }
+                    }
+
                     let bestMate = null; let maxScore = -999;
-                    
                     state.players.forEach(m => {
                         if (m.team === p.team && m !== p && m.role !== 'GK') {
                             let forwardDist = (p.team === 1) ? (m.x - p.x) : (p.x - m.x); 
                             let dist = getDistance(p.x, p.y, m.x, m.y);
-                            let score = (forwardDist * 5) - dist; 
+                            let score = (forwardDist * 4) - dist + ((Math.random() * 30) - 5); 
                             
                             let laneBlocked = false;
-                            let minEnemyDistToM = Infinity;
                             state.players.forEach(e => {
-                                if (e.team !== p.team) {
-                                    // ★ 패스길 차단 반경 확대 (안전한 패스만 시도하게 함)
-                                    if (pDistance(e.x, e.y, p.x, p.y, m.x, m.y) < 3.0) laneBlocked = true;
-                                    let d2 = getDistance(m.x, m.y, e.x, e.y);
-                                    if (d2 < minEnemyDistToM) minEnemyDistToM = d2;
-                                }
+                                if (e.team !== p.team && pDistance(e.x, e.y, p.x, p.y, m.x, m.y) < 2.5) laneBlocked = true;
                             });
-                            
-                            if (laneBlocked) score -= 1000; // 길이 막히면 절대 안줌
-                            if (dist < 5 || dist > 85) score -= 500; 
-                            
-                            score += minEnemyDistToM * 3; // 동료 주변이 텅 비어있을수록 높은 점수
 
+                            // 오프사이드 철저 방지 
+                            let isOffside = false;
+                            if (p.team === 1 && m.x > offsideLine1) isOffside = true;
+                            if (p.team === 2 && m.x < offsideLine2) isOffside = true;
+
+                            if (laneBlocked) score -= 800; 
+                            if (isOffside) score -= 800; 
+                            if (dist < 4 || dist > 85) score -= 100; 
+                            
                             if (score > maxScore) { maxScore = score; bestMate = m; }
                         }
                     });
 
-                    // ★ 안전한 패스 경로가 있을 때만 패스 (-50점으로 상향)
-                    if (bestMate && maxScore > -50) {
+                    if (bestMate && maxScore > -60) {
                         let isThroughPass = false;
                         let targetX = bestMate.x; let targetY = bestMate.y;
 
-                        if (bestMate.role === 'FW') {
+                        // 스루패스 빈 공간 창출
+                        let spaceBehind = (p.team === 1) ? (offsideLine1 - bestMate.x) : (bestMate.x - offsideLine2);
+                        if (spaceBehind > 10 && Math.random() < 0.7 && bestMate.role !== 'DF') {
                             isThroughPass = true;
-                            targetX += dir * 10; // 전방 공간으로 스루패스
+                            targetX += dir * Math.min(spaceBehind * 0.8, 15); 
                         }
 
                         io.to(roomCode).emit('playSound', 'kick');
-                        let power = ((p.stats && p.stats.pas ? p.stats.pas : 80) / 28); 
-                        if (isThroughPass) power *= 1.3; 
+                        
+                        // ★ 버그 3 픽스: 패스 속도 너프 (숫자를 늘려 속도 저하)
+                        let power = ((p.stats && p.stats.pas ? p.stats.pas : 80) / 38); 
+                        if (isThroughPass) power *= 1.15; 
 
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
                         state.ball.vx = ((targetX - p.x) / d) * power;
-                        state.ball.vy = ((targetY - p.y) / d) * power; // 정확도 100%
+                        state.ball.vy = ((targetY - p.y) / d) * power; 
                         
                         state.passTargetId = bestMate.id; // 동료 마중 발동
                         p.cooldown = 10; 
                     } 
                     else {
-                        // 패스할 곳이 없으면 짧게 드리블 (폭탄 돌리기 방지)
                         let currentVySign = state.ball.vy >= 0 ? 1 : -1;
                         let dodgeY = currentVySign * 1.5; 
                         if (Math.abs(state.ball.vy) < 0.2) dodgeY = (p.y > 50) ? -1.5 : 1.5;
 
                         if (enemyAhead) { 
-                            state.ball.vx = dir * 0.5; // 살짝만
-                            state.ball.vy = dodgeY * 1.5; // 옆으로 치기
+                            state.ball.vx = dir * 0.8; state.ball.vy = dodgeY * 1.2; 
                         } else { 
-                            state.ball.vx = dir * 1.8; 
-                            state.ball.vy = dodgeY * 0.2; 
+                            state.ball.vx = dir * 1.7; state.ball.vy = dodgeY * 0.2; 
                         }
-                        p.cooldown = 4; 
+                        p.cooldown = 3; 
                     }
                 }
             }
@@ -567,9 +617,8 @@ function setupSetPiece(state, type, sideTeam = 1) {
     state.phase = type; state.setPieceTimer = 15; state.ball.vx = 0; state.ball.vy = 0;
     let dir = sideTeam === 1 ? 1 : -1;
 
-    state.players.forEach(p => { p.y = p.baseY; p.cooldown = 0; });
-
     if (type === 'throw_in') {
+        state.players.forEach(p => { p.y = p.baseY; p.cooldown = 0; });
         state.eventText = "스로인"; state.ball.y = state.ball.y <= 0 ? 2 : 98;
         state.ball.x = Math.max(2, Math.min(98, state.ball.x)); 
         let fieldPlayers = state.players.filter(p => p.role !== 'GK');
@@ -585,6 +634,7 @@ function setupSetPiece(state, type, sideTeam = 1) {
         thrower.x = state.ball.x; thrower.y = state.ball.y; thrower.cooldown = 15;
     } 
     else if (type === 'corner') {
+        state.players.forEach(p => { p.y = p.baseY; p.cooldown = 0; });
         state.eventText = "코너킥"; state.possessionTeam = sideTeam === 1 ? 2 : 1;
         let attTeam = state.possessionTeam;
         let goalX = sideTeam === 1 ? 2 : 98; state.ball.x = goalX; state.ball.y = (state.ball.y > 50) ? 98 : 2;
