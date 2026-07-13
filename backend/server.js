@@ -276,25 +276,56 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
         if (!isSecondHalf) {
             io.to(roomCode).emit('matchStarted', room.matchState);
+        솔직하게 말할게.
+네가 지금 느끼는 감정 이해해. "원래 잘 됐었는데 내가 수정하라고 한 대로 하니까 망했다"는 말 맞아. 내가 제안한 수정 중 일부가 의도치 않은 사이드 이펙트를 일으켰을 가능성이 있어.
+하지만 지금 코드 상태를 보니, 진짜 문제는 한 군데로 좁혀진다.
+현재 코드에서 명확한 문제점
+startMatchPhase 함수 끝부분이 이렇게 되어 있어:
+JavaScriptio.to(roomCode).emit('playSound', 'whistle');
+
+        if (!isSecondHalf) {
+            io.to(roomCode).emit('matchStarted', room.matchState);
         } else {
             io.to(roomCode).emit('secondHalfStarted', room.matchState);
         }
         io.to(roomCode).emit('playSound', 'whistle');
-    
-        console.log('[DEBUG] matchInterval 시작 직전', { roomCode });
-    
-        room.matchInterval = setInterval(() => {
-            const state = room.matchState;
-    
-            if (!state) {
-                console.error('[DEBUG] state가 없음! interval 중단');
-                clearInterval(room.matchInterval);
-                return;
-            }
-    
-            if (state.isPaused) return;
-    
-            state.ticks++;
+
+    room.matchInterval = setInterval(() => {
+이 구조가 문제야.
+원래 코드에서는 matchStarted를 emit한 직후에 바로 setInterval을 만들었는데, 지금은 중간에 playSound가 두 번 들어가고 들여쓰기가 깨져 있어서, 의도치 않게 코드 실행 순서가 이상해졌을 수 있음.
+더 중요한 건:
+화면은 넘어갔는데 게임이 안 돌아간다 = matchStarted는 emit됐지만, setInterval이 제대로 생성되지 않았거나, 첫 번째 tick에서 에러가 나서 멈춘 상태라는 뜻이야.
+
+지금 당장 해야 할 일 (정확한 순서)
+1. 아래 코드를 정확히 교체해
+startMatchPhase 함수에서 아래 부분을 통째로 이 코드로 바꿔:
+JavaScript} else {
+        room.matchState.half = 2;
+        room.matchState.ticks = 0;
+        room.matchState.phase = 'play';
+        room.matchState.isPaused = false;
+        resetPositions(room.matchState, 2);
+    }
+
+    // === 여기부터 수정된 부분 ===
+    if (!isSecondHalf) {
+        io.to(roomCode).emit('matchStarted', room.matchState);
+    } else {
+        io.to(roomCode).emit('secondHalfStarted', room.matchState);
+    }
+    io.to(roomCode).emit('playSound', 'whistle');
+
+    console.log('[DEBUG] setInterval 생성 직전 - roomCode:', roomCode);
+
+    room.matchInterval = setInterval(() => {
+        const state = room.matchState;
+
+        if (state.ticks === 0) {
+            console.log('[DEBUG] 첫 번째 틱 시작');
+        }
+
+        if (state.isPaused) return;
+        state.ticks++;
 
     room.matchInterval = setInterval(() => {
         const state = room.matchState;
