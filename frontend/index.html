@@ -33,6 +33,9 @@
         .arc-right { position:absolute; right:16%; top:50%; transform:translate(50%, -50%); width:60px; height:80px; border:3px solid rgba(255,255,255,0.7); border-radius:50%; clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%); z-index: 0;}
         .goal-net-left { position:absolute; left:-30px; top:38%; width:27px; height:24%; background: rgba(255,255,255,0.2); border: 3px solid white; border-right: none; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); z-index: 1; background-image: radial-gradient(white 15%, transparent 16%), radial-gradient(white 15%, transparent 16%); background-size: 6px 6px; background-position: 0 0, 3px 3px;}
         .goal-net-right { position:absolute; right:-30px; top:38%; width:27px; height:24%; background: rgba(255,255,255,0.2); border: 3px solid white; border-left: none; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); z-index: 1; background-image: radial-gradient(white 15%, transparent 16%), radial-gradient(white 15%, transparent 16%); background-size: 6px 6px; background-position: 0 0, 3px 3px;}
+        
+        /* 세트피스 강조 효과 */
+        .event-highlight { color: #ff9f43; text-shadow: 1px 1px 5px black; font-size: 32px; font-weight: 900;}
     </style>
 </head>
 <body>
@@ -91,7 +94,6 @@
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        // ★ 하드코딩된 고정 Render 주소 (수정 불필요)
         const socket = io('https://soccer-game-g9tc.onrender.com'); 
         
         const sfxKick = new Audio('https://assets.mixkit.co/active_storage/sfx/2105/2105-preview.mp3');
@@ -222,7 +224,13 @@
             const min = Math.floor(data.gameSeconds / 60);
             const sec = Math.floor(data.gameSeconds % 60);
             document.getElementById('match-clock').innerText = `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-            document.getElementById('match-event').innerText = data.event;
+            
+            const eventEl = document.getElementById('match-event');
+            eventEl.innerText = data.event;
+            // 세트피스일 때 UI 시각적 강조
+            if(data.event !== "오픈 플레이") eventEl.classList.add('event-highlight');
+            else eventEl.classList.remove('event-highlight');
+
             document.getElementById('score-display').innerText = `${data.score.team1} : ${data.score.team2}`;
 
             const ball = document.getElementById('match-ball');
