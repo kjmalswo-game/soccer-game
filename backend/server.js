@@ -79,10 +79,25 @@ io.on('connection', (socket) => {
 
     socket.on('playerPlaced', (roomCode, slotId, playerInfo) => {
         const room = rooms[roomCode];
-        if(!room) return;
+        if(!room || !room.currentDraft) return;
+
+        const isP1 = room.players[socket.id].id === 'player1';
+        
+        // ★ 광클 및 중복 턴 넘김 방지
+        if (isP1 && room.currentDraft.p1Placed) return;
+        if (!isP1 && room.currentDraft.p2Placed) return;
+
         room.players[socket.id].team.push({ slot: slotId, player: playerInfo });
         room.currentDraft.answers++;
-        if (room.currentDraft.answers === 2) { clearTimeout(room.draftTimeout); room.draftCount++; nextDraftTurn(roomCode); }
+        
+        if (isP1) room.currentDraft.p1Placed = true;
+        else room.currentDraft.p2Placed = true;
+
+        if (room.currentDraft.answers === 2) { 
+            clearTimeout(room.draftTimeout); 
+            room.draftCount++; 
+            nextDraftTurn(roomCode); 
+        }
     });
 
     socket.on('swapPlayers', (roomCode, teamId, id1, id2) => {
@@ -114,9 +129,44 @@ function nextDraftTurn(roomCode) {
         return room.availablePlayers.splice(idx, 1)[0];
     }
     const p1Player = pullRandomPlayer(), p2Player = pullRandomPlayer();
-    room.currentDraft = { p1: p1Player, p2: p2Player, answers: 0 };
+    // 선택 여부(p1Placed, p2Placed) 추적값 초기화
+    room.currentDraft = { 
+        p1: p1Player, p2: p2Player, answers: 0, 
+        p1Placed: false, p2Placed: false 
+    };
     io.to(roomCode).emit('draftPlayer', { p1: p1Player, p2: p2Player, timeLimit: room.settings.timer });
-    room.draftTimeout = setTimeout(() => { io.to(roomCode).emit('forceRandomPlacement'); }, room.settings.timer * 1000);
+    // ★ 0초가 되면 서버가 직접 개입해서 빈자리에 강제 배치
+    room.draftTimeout = setTimeout(() => { 
+        if(!room || !room.currentDraft) return;
+        const playerIds = Object.keys(room.players);
+        playerIds.forEach(pId => {
+            const pData = room.players[pId];
+            const isP1 = pData.id === 'player1';
+            const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
+            // 아직 선택하지 않은 유저가 있다면
+            if (!hasPlaced) {
+                const filledSlots = pData.team.map(t => parseInt(t.slot));
+                let emptySlot = -1;
+                // 0번부터 9번 슬롯 중 가장 처음 발견되는 빈자리 탐색
+                for(let i = 0; i < 10; i++) {
+                    if(!filledSlots.includes(i)) { emptySlot = i; break; }
+                }
+                if(emptySlot !== -1) {
+                    const assignedPlayer = isP1 ? room.currentDraft.p1 : room.currentDraft.p2;
+                    pData.team.push({ slot: emptySlot, player: assignedPlayer });
+                    // 클라이언트(프론트)에게 화면을 업데이트하라고 명령
+                    io.to(pId).emit('autoPlaced', emptySlot, assignedPlayer); 
+                }
+                room.currentDraft.answers++;
+                if(isP1) room.currentDraft.p1Placed = true;
+                else room.currentDraft.p2Placed = true;
+            }
+        });
+        if (room.currentDraft.answers >= 2) {
+            room.draftCount++;
+            nextDraftTurn(roomCode);
+        }
+    }, room.settings.timer * 1000 + 1000); // 핑 지연을 고려해 1초 여유 부여
 }
 
 function startMatchPhase(roomCode, isSecondHalf = false) {
