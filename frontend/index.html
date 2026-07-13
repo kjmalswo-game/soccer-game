@@ -232,18 +232,28 @@
             pitch.appendChild(ballEl);
 
             // 양 팀 선수 생성
+            // 양 팀 선수 및 골키퍼 생성
             matchState.players.forEach(player => {
                 const el = document.createElement('div');
                 el.className = 'player-node';
                 el.id = `match-player-${player.team}-${player.id}`; 
-                // ★ 중요: 서버 통신 주기에 맞춰 CSS로 애니메이션을 걸어줍니다. (버벅임 방지)
                 el.style.transition = 'left 0.1s linear, top 0.1s linear';
                 
                 el.style.left = player.x + '%';
                 el.style.top = player.y + '%';
-                el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a'; // 파랑 vs 빨강
                 
-                if(player.stats.spd >= 90 || player.stats.sht >= 90) el.style.border = '2px solid #f1c40f'; 
+                // ★ 색상 구분: 팀1(파랑), 팀2(빨강), 골키퍼(노랑/초록 톤)
+                if (player.role === 'GK') {
+                    el.style.background = '#f39c12'; // 골키퍼는 눈에 띄는 주황/노랑색
+                    el.style.border = '2px solid white';
+                } else {
+                    el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a';
+                }
+                
+                // 능력치가 높으면 금색 테두리 (필드 플레이어만)
+                if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90)) {
+                    el.style.border = '2px solid #f1c40f'; 
+                }
 
                 el.innerText = player.name.substring(0, 3);
                 pitch.appendChild(el);
