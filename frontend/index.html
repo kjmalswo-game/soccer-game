@@ -36,8 +36,11 @@
 
     <div id="screen-lobby" class="screen">
         <h2>대기방 (입장 코드: <span id="display-code" style="color: #0fb9b1;"></span>)</h2>
+        <!-- ★ 연결 상태를 알려주는 텍스트 추가 -->
+        <h3 id="lobby-status" style="color: #f7b731; margin-bottom: 20px;">방 생성 중...</h3>
+        
         <div id="settings-container"></div>
-        <button onclick="readyToPlay()">준비 완료 (포메이션 선택 시 게임 시작)</button>
+        <button id="btn-ready" onclick="readyToPlay()">준비 완료 (포메이션 선택)</button>
     </div>
 
     <div id="screen-draft" class="screen">
@@ -104,15 +107,35 @@
             document.getElementById(id).classList.add('active');
         }
 
-        function createRoom() { socket.emit('createRoom'); }
+        let isHost = false; // 방장 여부 저장 변수
+
+        function createRoom() { 
+            isHost = true; // 방 생성 버튼을 누르면 방장
+            socket.emit('createRoom'); 
+        }
+        
         function joinRoom() { 
+            isHost = false; // 입장 버튼을 누르면 참가자
             const code = document.getElementById('join-code').value.toUpperCase();
             if(code) socket.emit('joinRoom', code); 
         }
 
-        socket.on('roomCreated', (code, db) => { setupLobby(code, db); });
-        socket.on('playerJoined', (db) => { setupLobby(myRoomCode, db); });
-        socket.on('error', (msg) => alert(msg));
+        // 방장 전용: 방 생성 완료
+        socket.on('roomCreated', (code, db) => { 
+            setupLobby(code, db); 
+            document.getElementById('lobby-status').innerText = '상대방의 입장을 기다리는 중... (코드를 공유하세요)';
+        });
+        
+        // 참가자 전용: 방 입장 완료
+        socket.on('roomJoined', (code, db) => { 
+            setupLobby(code, db); 
+            document.getElementById('lobby-status').innerText = '방에 입장했습니다! 방장이 설정을 마칠 때까지 기다려주세요.';
+        });
+
+        // 공통: 방에 두 명이 모두 모였을 때
+        socket.on('playerJoinedLobby', () => {
+            document.getElementById('lobby-status').innerText = '🔥 두 플레이어가 모두 모였습니다! 포메이션 선택 후 준비 완료를 누르세요.';
+        });
 
         function setupLobby(code, db) {
             myRoomCode = code;
@@ -120,18 +143,25 @@
             document.getElementById('display-code').innerText = code;
             
             const container = document.getElementById('settings-container');
-            container.innerHTML = '<h4>제한시간 설정</h4>';
+            container.innerHTML = '';
             
-            const timerSelect = document.createElement('select');
-            timerSelect.id = 'timer-select';
-            gameDB.settings.draftTimers.forEach(t => {
-                const opt = document.createElement('option');
-                opt.value = t; opt.innerText = `${t}초`;
-                timerSelect.appendChild(opt);
-            });
-            container.appendChild(timerSelect);
+            // ★ 방장(Host)에게만 제한시간 설정 드롭다운 표시
+            if(isHost) {
+                container.innerHTML += '<h4>제한시간 설정 (방장 전용)</h4>';
+                const timerSelect = document.createElement('select');
+                timerSelect.id = 'timer-select';
+                gameDB.settings.draftTimers.forEach(t => {
+                    const opt = document.createElement('option');
+                    opt.value = t; opt.innerText = `${t}초`;
+                    timerSelect.appendChild(opt);
+                });
+                container.appendChild(timerSelect);
+            } else {
+                container.innerHTML += '<p style="color:gray;">(제한시간 설정은 방장의 권한입니다)</p>';
+            }
 
-            container.innerHTML += '<h4>포메이션 선택</h4>';
+            // 포메이션은 둘 다 각자 선택
+            container.innerHTML += '<h4>내 포메이션 선택</h4>';
             const formationSelect = document.createElement('select');
             formationSelect.id = 'formation-select';
             Object.keys(gameDB.formations).forEach(f => {
@@ -141,15 +171,29 @@
             });
             container.appendChild(formationSelect);
 
+            // 준비 버튼 초기화 (활성화)
+            const btn = document.getElementById('btn-ready');
+            btn.innerText = "준비 완료";
+            btn.disabled = false;
+            btn.style.background = '#0fb9b1';
+
             showScreen('screen-lobby');
         }
 
         function readyToPlay() {
-            const timer = document.getElementById('timer-select').value;
             const formationId = document.getElementById('formation-select').value;
-            socket.emit('setTimer', myRoomCode, timer);
+            // 방장일 경우에만 서버로 제한시간 변경 신호 전송
+            if(isHost) {
+                const timer = document.getElementById('timer-select').value;
+                socket.emit('setTimer', myRoomCode, timer);
+            }
             socket.emit('playerReady', myRoomCode, formationId);
             myFormation = gameDB.formations[formationId].positions;
+            // ★ 준비 완료를 누르면 버튼을 잠그고 상대방을 기다림 (광클 오류 방지)
+            const btn = document.getElementById('btn-ready');
+            btn.innerText = "준비 완료! (상대방 대기 중...)";
+            btn.disabled = true;
+            btn.style.background = 'gray';
         }
 
         // --- 드래프트 ---
