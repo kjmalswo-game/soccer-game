@@ -32,9 +32,12 @@ io.on('connection', (socket) => {
         if (rooms[roomCode] && Object.keys(rooms[roomCode].players).length < 2) {
             rooms[roomCode].players[socket.id] = { id: 'player2', ready: false, team: [] };
             socket.join(roomCode);
-            io.to(roomCode).emit('playerJoined', db);
+            // 들어온 '참가자' 본인에게만 방 세팅 정보(DB) 전송
+            socket.emit('roomJoined', roomCode, db); 
+            // 방장과 참가자 '모두'에게 입장이 완료되었다고 알림
+            io.to(roomCode).emit('playerJoinedLobby'); 
         } else {
-            socket.emit('error', '방이 가득 찼거나 존재하지 않습니다.');
+            socket.emit('error', '방이 가득 찼거나 존재하지 않는 코드입니다.');
         }
     });
 
@@ -47,13 +50,15 @@ io.on('connection', (socket) => {
 
     socket.on('playerReady', (roomCode, formationId) => {
         const room = rooms[roomCode];
-        if(!room) return;
-        
+        if(!room || !room.players[socket.id]) return; // 방이 없거나 비정상 접근 차단
+        // 해당 유저의 준비 상태 업데이트
         room.players[socket.id].formation = formationId;
         room.players[socket.id].ready = true;
-
-        const allReady = Object.values(room.players).every(p => p.ready);
-        if (allReady && Object.keys(room.players).length === 2) {
+        // 방 안에 있는 모든 유저가 준비되었는지 확인
+        const playersArr = Object.values(room.players);
+        const allReady = playersArr.every(p => p.ready);
+        // ★ 반드시 "두 명"이 모두 들어왔고, "모두 준비완료" 상태일 때만 게임 시작
+        if (allReady && playersArr.length === 2) {
             startDraftPhase(roomCode);
         }
     });
