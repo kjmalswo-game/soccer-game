@@ -98,70 +98,146 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- 헬퍼 함수: 두 점 사이의 거리 계산 ---
+    function getDistance(x1, y1, x2, y2) {
+        return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+    }
+
     function startMatchPhase(roomCode) {
         const room = rooms[roomCode];
         room.state = 'match';
-        room.matchTime = 0; 
         
-        // --- 킥오프 좌표 계산 로직 시작 ---
         const playerIds = Object.keys(room.players);
         const p1Data = room.players[playerIds[0]];
         const p2Data = room.players[playerIds[1]];
-
         const p1Formation = db.formations[p1Data.formation].positions;
         const p2Formation = db.formations[p2Data.formation].positions;
 
-        // 양 팀 선수들에게 풀코트 기준 초기 X, Y 좌표를 부여합니다.
-        const matchState = {
-            team1: p1Data.team.map(t => {
-                const pos = p1Formation[t.slot];
-                return { 
-                    ...t.player, 
-                    team: 1, 
-                    x: pos.x / 2,       // 반코트(100)를 풀코트(50)로 축소
-                    y: pos.y 
-                }; 
-            }),
-            team2: p2Data.team.map(t => {
-                const pos = p2Formation[t.slot];
-                return { 
-                    ...t.player, 
-                    team: 2, 
-                    x: 100 - (pos.x / 2), // 오른쪽으로 밀어내고 좌우 반전
-                    y: 100 - pos.y        // 상하 반전 (180도 회전)
-                }; 
-            })
+        // 1. 공과 선수들의 초기 상태 (baseX, baseY는 돌아갈 기본 위치)
+        room.matchState = {
+            ticks: 0, // 0.1초마다 1씩 증가
+            ball: { x: 50, y: 50, vx: 0, vy: 0 },
+            players: [
+                ...p1Data.team.map(t => {
+                    const pos = p1Formation[t.slot];
+                    const startX = pos.x / 2;
+                    return { ...t.player, team: 1, x: startX, y: pos.y, baseX: startX, baseY: pos.y };
+                }),
+                ...p2Data.team.map(t => {
+                    const pos = p2Formation[t.slot];
+                    const startX = 100 - (pos.x / 2);
+                    return { ...t.player, team: 2, x: startX, y: 100 - pos.y, baseX: startX, baseY: 100 - pos.y };
+                })
+            ]
         };
 
-        // 계산된 초기 좌표와 함께 클라이언트들에게 매치 시작을 알립니다.
-        io.to(roomCode).emit('matchStarted', matchState);
-        // --- 킥오프 좌표 계산 로직 끝 ---
+        io.to(roomCode).emit('matchStarted', room.matchState);
 
+        // 2. 물리 엔진 루프 (0.1초 = 100ms마다 실행)
         room.matchInterval = setInterval(() => {
-            room.matchTime++;
-            const gameMinute = Math.floor((room.matchTime / db.settings.halfDurationRealSeconds) * db.settings.gameMinutesPerHalf);
-            
-            // 이벤트 확률 계산
-            const totalWeight = db.matchEvents.reduce((sum, e) => sum + e.weight, 0);
-            let rand = Math.random() * totalWeight;
-            let eventType = "오픈 플레이";
-            for (let e of db.matchEvents) {
-                if (rand < e.weight) { eventType = e.type; break; }
-                rand -= e.weight;
-            }
+            const state = room.matchState;
+            state.ticks++;
 
-            io.to(roomCode).emit('matchUpdate', {
-                time: room.matchTime,
-                gameMinute: gameMinute,
-                event: eventType
-                // 추후 이 부분에 변경되는 좌표 데이터를 넣을 예정입니다.
+            // --- [A] 공 이동 및 마찰력 로직 ---
+            state.ball.x += state.ball.vx;
+            state.ball.y += state.ball.vy;
+            state.ball.vx *= 0.85; // 잔디 마찰력 (속도 감소)
+            state.ball.vy *= 0.85;
+            
+            // 공이 벽에 튕기도록 처리 (간단한 아웃 방지)
+            if (state.ball.x <= 2 || state.ball.x >= 98) state.ball.vx *= -1;
+            if (state.ball.y <= 2 || state.ball.y >= 98) state.ball.vy *= -1;
+
+            // --- [B] 팀별 공과 가장 가까운 선수 찾기 ---
+            let minDist1 = Infinity, minDist2 = Infinity;
+            let closest1 = null, closest2 = null;
+
+            state.players.forEach(p => {
+                let dist = getDistance(p.x, p.y, state.ball.x, state.ball.y);
+                if (p.team === 1 && dist < minDist1) { minDist1 = dist; closest1 = p; }
+                if (p.team === 2 && dist < minDist2) { minDist2 = dist; closest2 = p; }
             });
 
-            if (room.matchTime === db.settings.halfDurationRealSeconds) {
+            // --- [C] 선수 이동 로직 (A.I) ---
+            state.players.forEach(p => {
+                let targetX = p.baseX;
+                let targetY = p.baseY;
+
+                // 1) 내가 팀에서 공과 가장 가깝다면? -> 공을 향해 달린다.
+                if (p === closest1 || p === closest2) {
+                    targetX = state.ball.x;
+                    targetY = state.ball.y;
+                } else {
+                    // 2) 아니라면? -> 공의 위치에 맞춰 라인을 약간씩 올리거나 내린다 (포메이션 유지)
+                    let lineShift = (state.ball.x - 50) * 0.3; // 공 위치에 따라 최대 15% 정도 이동
+                    targetX = Math.max(5, Math.min(95, p.baseX + lineShift));
+                }
+
+                // 이동 계산 (선수의 스피드 능력치 반영)
+                let distToTarget = getDistance(p.x, p.y, targetX, targetY);
+                // spd 80 기준 -> 한 틱당 약 0.8 이동
+                let moveSpeed = (p.stats.spd || 70) / 100; 
+                
+                if (distToTarget > moveSpeed) {
+                    p.x += ((targetX - p.x) / distToTarget) * moveSpeed;
+                    p.y += ((targetY - p.y) / distToTarget) * moveSpeed;
+                }
+
+                // --- [D] 공 터치 및 킥 로직 ---
+                let distToBall = getDistance(p.x, p.y, state.ball.x, state.ball.y);
+                if (distToBall < 2.5) { // 공과 닿았다면
+                    let isShooting = false;
+                    let targetGoalX = (p.team === 1) ? 100 : 0;
+                    
+                    // 골대(x: 100 또는 0)와의 거리가 35 이하면 슈팅 시도
+                    if (Math.abs(p.x - targetGoalX) < 35) {
+                        isShooting = true;
+                    }
+
+                    if (isShooting) {
+                        // 슈팅 로직 (골대 정중앙 Y: 50을 향해, 슈팅 능력치 비례 파워)
+                        let power = (p.stats.sht || 70) / 20; // 3.5 ~ 5.0 파워
+                        let distToGoal = getDistance(p.x, p.y, targetGoalX, 50);
+                        state.ball.vx = ((targetGoalX - p.x) / distToGoal) * power;
+                        state.ball.vy = ((50 - p.y) / distToGoal) * power;
+                    } else {
+                        // 패스 로직 (단순화: 상대 골대 방향으로 가볍게 툭 쳐놓기 = 드리블/전진 패스)
+                        let power = (p.stats.pas || 70) / 30; // 2.0 ~ 3.0 파워
+                        state.ball.vx = (p.team === 1 ? 1 : -1) * power;
+                        state.ball.vy = (Math.random() - 0.5) * 2; // Y축으로 약간의 랜덤성
+                    }
+                }
+            });
+
+            // 1초(10틱)마다 시간 계산
+            let secondsPassed = Math.floor(state.ticks / 10);
+            let gameMinute = Math.floor((secondsPassed / db.settings.halfDurationRealSeconds) * db.settings.gameMinutesPerHalf);
+
+            // 이벤트 텍스트 갱신 (1초마다)
+            let eventText = "오픈 플레이";
+            if (state.ticks % 10 === 0) {
+                const totalWeight = db.matchEvents.reduce((sum, e) => sum + e.weight, 0);
+                let rand = Math.random() * totalWeight;
+                for (let e of db.matchEvents) {
+                    if (rand < e.weight) { eventText = e.type; break; }
+                    rand -= e.weight;
+                }
+            }
+
+            // 프론트엔드로 0.1초마다 좌표 데이터 전송
+            io.to(roomCode).emit('matchUpdate', {
+                gameMinute: gameMinute,
+                event: eventText,
+                ball: state.ball,
+                players: state.players
+            });
+
+            // 전반전 종료 체크
+            if (secondsPassed >= db.settings.halfDurationRealSeconds) {
                 clearInterval(room.matchInterval);
                 startHalfTime(roomCode);
             }
-        }, 1000); 
+        }, 100); // 100ms (0.1초) 
     }
 
     function startHalfTime(roomCode) {
