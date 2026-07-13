@@ -299,6 +299,10 @@
             else if (score.team2 > score.team1) resultText.innerText = "TEAM 2 승리! 🎉";
             else resultText.innerText = "무승부! 🤝";
         });
+        
+        socket.on('error', (msg) => {
+            alert(msg);
+        });
     </script>
 </body>
 </html>
