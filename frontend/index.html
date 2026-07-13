@@ -14,7 +14,8 @@
         .pitch { width: 800px; height: 500px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; }
         .draft-pitch { width: 400px; height: 600px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);}
         
-        .player-node { width: 35px; height: 35px; border-radius: 50%; background: #eb3b5a; border: 2px solid white; position: absolute; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); z-index: 5; user-select: none;}
+        /* ★ 선수 크기 40% 축소 적용 (35px -> 21px) */
+        .player-node { width: 21px; height: 21px; border-radius: 50%; background: #eb3b5a; border: 2px solid white; position: absolute; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 7px; font-weight: bold; color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.3); z-index: 5; user-select: none;}
         .player-placed { background: #3867d6; cursor: default; }
         
         #draft-popup { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 10px; transition: transform 0.5s ease; border: 2px solid #0fb9b1; z-index: 10; }
@@ -34,7 +35,6 @@
         .goal-net-left { position:absolute; left:-30px; top:38%; width:27px; height:24%; background: rgba(255,255,255,0.2); border: 3px solid white; border-right: none; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); z-index: 1; background-image: radial-gradient(white 15%, transparent 16%), radial-gradient(white 15%, transparent 16%); background-size: 6px 6px; background-position: 0 0, 3px 3px;}
         .goal-net-right { position:absolute; right:-30px; top:38%; width:27px; height:24%; background: rgba(255,255,255,0.2); border: 3px solid white; border-left: none; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); z-index: 1; background-image: radial-gradient(white 15%, transparent 16%), radial-gradient(white 15%, transparent 16%); background-size: 6px 6px; background-position: 0 0, 3px 3px;}
         
-        /* 세트피스 강조 효과 */
         .event-highlight { color: #ff9f43; text-shadow: 1px 1px 5px black; font-size: 32px; font-weight: 900;}
     </style>
 </head>
@@ -94,6 +94,12 @@
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
+        // ★ F5 / 뒤로가기 새로고침 방지 팝업
+        window.addEventListener('beforeunload', function (e) {
+            e.preventDefault();
+            e.returnValue = '';
+        });
+
         const socket = io('https://soccer-game-g9tc.onrender.com'); 
         
         const sfxKick = new Audio('https://assets.mixkit.co/active_storage/sfx/2105/2105-preview.mp3');
@@ -201,7 +207,8 @@
 
             const ballEl = document.createElement('div');
             ballEl.id = 'match-ball';
-            ballEl.style.cssText = `width: 14px; height: 14px; background: white; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 2px solid black;`;
+            // 공 크기도 살짝 축소
+            ballEl.style.cssText = `width: 10px; height: 10px; background: white; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 1.5px solid black;`;
             pitch.appendChild(ballEl);
 
             matchState.players.forEach(player => {
@@ -211,9 +218,9 @@
                 el.style.transition = 'left 0.1s linear, top 0.1s linear';
                 el.style.left = player.x + '%'; el.style.top = player.y + '%';
                 
-                if (player.role === 'GK') { el.style.background = '#f39c12'; el.style.border = '2px solid white'; } 
+                if (player.role === 'GK') { el.style.background = '#f39c12'; el.style.border = '1px solid white'; } 
                 else { el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a'; }
-                if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90)) el.style.border = '2px solid #f1c40f'; 
+                if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90)) el.style.border = '1.5px solid #f1c40f'; 
 
                 el.innerText = player.name.substring(0, 3);
                 pitch.appendChild(el);
@@ -227,7 +234,6 @@
             
             const eventEl = document.getElementById('match-event');
             eventEl.innerText = data.event;
-            // 세트피스일 때 UI 시각적 강조
             if(data.event !== "오픈 플레이") eventEl.classList.add('event-highlight');
             else eventEl.classList.remove('event-highlight');
 
