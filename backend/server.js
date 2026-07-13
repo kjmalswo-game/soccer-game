@@ -324,26 +324,29 @@ function nextDraftTurn(roomCode) {
     io.to(roomCode).emit('draftPlayer', { p1: p1Player, p2: p2Player, timeLimit: room.settings.timer });
     
     room.draftTimeout = setTimeout(() => { 
-        if(!room || !room.currentDraft) return;
-        Object.keys(room.players).forEach(pId => {
-            const pData = room.players[pId];
-            const isP1 = pData.id === 'player1';
-            const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
-            if (!hasPlaced) {
-                const filledSlots = pData.team.map(t => parseInt(t.slot));
-                let emptySlot = -1;
-                for(let i = 0; i < 10; i++) { if(!filledSlots.includes(i)) { emptySlot = i; break; } }
-                if(emptySlot !== -1) {
-                    const assignedPlayer = isP1 ? room.currentDraft.p1 : room.currentDraft.p2;
-                    pData.team.push({ slot: emptySlot, player: assignedPlayer });
-                    io.to(pId).emit('autoPlaced', emptySlot, assignedPlayer); 
+            if(!room || !room.currentDraft) return;
+            Object.keys(room.players).forEach(pId => {
+                const pData = room.players[pId];
+                const isP1 = pData.id === 'player1';
+                const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
+                if (!hasPlaced) {
+                    const filledSlots = pData.team.map(t => {
+                        const num = String(t.slot).replace(/[^0-9]/g, '');
+                        return num ? parseInt(num, 10) : -1;
+                    });
+                    let emptySlot = -1;
+                    for(let i = 0; i < 10; i++) { if(!filledSlots.includes(i)) { emptySlot = i; break; } }
+                    if(emptySlot !== -1) {
+                        const assignedPlayer = isP1 ? room.currentDraft.p1 : room.currentDraft.p2;
+                        pData.team.push({ slot: emptySlot, player: assignedPlayer });
+                        io.to(pId).emit('autoPlaced', emptySlot, assignedPlayer); 
+                    }
+                    room.currentDraft.answers++;
+                    if(isP1) room.currentDraft.p1Placed = true; else room.currentDraft.p2Placed = true;
                 }
-                room.currentDraft.answers++;
-                if(isP1) room.currentDraft.p1Placed = true; else room.currentDraft.p2Placed = true;
-            }
-        });
-        if (room.currentDraft.answers >= 2) { room.draftCount++; nextDraftTurn(roomCode); }
-    }, room.settings.timer * 1000 + 1000);
+            });
+            if (room.currentDraft.answers >= 2) { room.draftCount++; nextDraftTurn(roomCode); }
+        }, room.settings.timer * 1000 + 1000);
 }
 
 function startMatchPhase(roomCode, isSecondHalf = false) {
@@ -355,29 +358,44 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         const p1Data = room.players[playerIds[0]], p2Data = room.players[playerIds[1]];
         
         const p1Formation = Array.isArray(db.formations) 
-            ? db.formations.find(f => f.id === p1Data.formation).positions 
-            : db.formations[p1Data.formation].positions;
+            ? db.formations.find(f => f.id === p1Data.formation)?.positions 
+            : db.formations[p1Data.formation]?.positions;
             
         const p2Formation = Array.isArray(db.formations) 
-            ? db.formations.find(f => f.id === p2Data.formation).positions 
-            : db.formations[p2Data.formation].positions;
+            ? db.formations.find(f => f.id === p2Data.formation)?.positions 
+            : db.formations[db.formations[p2Data.formation]]?.positions;
             
-        const gkStats = { spd: 85, sht: 85, pas: 80 };
+        if (!p1Formation || !p2Formation) {
+            console.error("🔥 포메이션 데이터를 읽어오지 못했습니다. 확인이 필요합니다.");
+            return;
+        }
+
+        const gkStats = { spd: 85, sht: 85, pas: 80 }; 
+
+        // [수정] t.slot의 인덱스 불일치 및 undefined 참조 완벽 방어
+        const mapTeamPlayers = (teamData, formationPositions, teamId) => {
+            return teamData.team.map((t, idx) => {
+                // 문자열 혼합형 slot 방어용 정제 처리
+                const cleanSlot = typeof t.slot === 'number' ? t.slot : parseInt(String(t.slot).replace(/[^0-9]/g, ''), 10);
+                // 해당 슬롯 인덱스가 없으면 배열의 순서(idx)나 기본 객체로 대체
+                const pos = formationPositions[cleanSlot] || formationPositions[idx] || { id: 'MF', x: 50, y: 50 };
+                
+                if (teamId === 1) {
+                    return { ...t.player, team: 1, role: getRole(pos.id), posId: pos.id, x: pos.x / 2, y: pos.y, baseX: pos.x / 2, baseY: pos.y, cooldown: 0 };
+                } else {
+                    return { ...t.player, team: 2, role: getRole(pos.id), posId: pos.id, x: 100 - (pos.x / 2), y: 100 - pos.y, baseX: 100 - (pos.x / 2), baseY: 100 - pos.y, cooldown: 0 };
+                }
+            });
+        };
 
         room.matchState = {
             ticks: 0, half: 1, score: { team1: 0, team2: 0 }, 
             phase: 'play', setPieceTimer: 0, lastTouchTeam: 1, possessionTeam: 1, eventText: "오픈 플레이", isPaused: false, throwerId: null, gkHolder: null,
             ball: { x: 50, y: 50, vx: 0, vy: 0 },
             players: [
-                ...p1Data.team.map((t, idx) => {
-                    const pos = p1Formation[t.slot];
-                    return { ...t.player, team: 1, role: getRole(pos.id), posId: pos.id, x: pos.x / 2, y: pos.y, baseX: pos.x / 2, baseY: pos.y, cooldown: 0 };
-                }),
+                ...mapTeamPlayers(p1Data, p1Formation, 1),
                 { id: 'gk1', name: 'GK', team: 1, role: 'GK', posId:'GK', x: 2, y: 50, baseX: 2, baseY: 50, stats: gkStats, cooldown: 0 },
-                ...p2Data.team.map((t, idx) => {
-                    const pos = p2Formation[t.slot];
-                    return { ...t.player, team: 2, role: getRole(pos.id), posId: pos.id, x: 100 - (pos.x / 2), y: 100 - pos.y, baseX: 100 - (pos.x / 2), baseY: 100 - pos.y, cooldown: 0 };
-                }),
+                ...mapTeamPlayers(p2Data, p2Formation, 2),
                 { id: 'gk2', name: 'GK', team: 2, role: 'GK', posId:'GK', x: 98, y: 50, baseX: 98, baseY: 50, stats: gkStats, cooldown: 0 }
             ]
         };
