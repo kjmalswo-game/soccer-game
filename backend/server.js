@@ -80,19 +80,30 @@ io.on('connection', (socket) => {
         if (playersArr.every(p => p.ready) && playersArr.length === 2) startDraftPhase(roomCode);
     });
 
+    // ★ 픽스됨: 드래프트 지연 패킷(동기화 꼬임) 완벽 차단 로직
     socket.on('playerPlaced', (roomCode, slotId, playerInfo) => {
         const room = rooms[roomCode];
         if(!room || !room.currentDraft) return;
         const isP1 = room.players[socket.id].id === 'player1';
+        
+        // 1. 같은 턴에서 중복 제출(광클) 방지
         if (isP1 && room.currentDraft.p1Placed) return;
         if (!isP1 && room.currentDraft.p2Placed) return;
+
+        // 2. 과거 턴의 늦은 패킷이 현재 턴을 덮어씌우는 것 원천 차단
+        const expectedPlayer = isP1 ? room.currentDraft.p1 : room.currentDraft.p2;
+        if (!playerInfo || playerInfo.id !== expectedPlayer.id) return;
 
         room.players[socket.id].team.push({ slot: slotId, player: playerInfo });
         room.currentDraft.answers++;
         if (isP1) room.currentDraft.p1Placed = true;
         else room.currentDraft.p2Placed = true;
 
-        if (room.currentDraft.answers === 2) { clearTimeout(room.draftTimeout); room.draftCount++; nextDraftTurn(roomCode); }
+        if (room.currentDraft.answers === 2) { 
+            clearTimeout(room.draftTimeout); 
+            room.draftCount++; 
+            nextDraftTurn(roomCode); 
+        }
     });
 
     socket.on('swapPlayers', (roomCode, teamId, id1, id2) => {
@@ -115,24 +126,33 @@ function startDraftPhase(roomCode) {
     nextDraftTurn(roomCode);
 }
 
+// ★ 픽스됨: 서버 강제 배치 로직 안정화
 function nextDraftTurn(roomCode) {
     const room = rooms[roomCode];
     if (room.draftCount >= 10) { startMatchPhase(roomCode, false); return; }
+    
     function pullRandomPlayer() {
         if(room.availablePlayers.length === 0) return null;
         const idx = Math.floor(Math.random() * room.availablePlayers.length);
         return room.availablePlayers.splice(idx, 1)[0];
     }
+    
     const p1Player = pullRandomPlayer(), p2Player = pullRandomPlayer();
     room.currentDraft = { p1: p1Player, p2: p2Player, answers: 0, p1Placed: false, p2Placed: false };
     io.to(roomCode).emit('draftPlayer', { p1: p1Player, p2: p2Player, timeLimit: room.settings.timer });
     
+    const currentTurn = room.draftCount; // 현재 턴 번호 저장
+    
     room.draftTimeout = setTimeout(() => { 
-        if(!room || !room.currentDraft) return;
+        // 고스트 타이머 작동 방지
+        if(!room || !room.currentDraft || room.draftCount !== currentTurn) return;
+        
         Object.keys(room.players).forEach(pId => {
             const pData = room.players[pId];
             const isP1 = pData.id === 'player1';
             const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
+            
+            // 미선택자 강제 배치
             if (!hasPlaced) {
                 const filledSlots = pData.team.map(t => parseInt(t.slot));
                 let emptySlot = -1;
@@ -146,8 +166,13 @@ function nextDraftTurn(roomCode) {
                 if(isP1) room.currentDraft.p1Placed = true; else room.currentDraft.p2Placed = true;
             }
         });
-        if (room.currentDraft.answers >= 2) { room.draftCount++; nextDraftTurn(roomCode); }
-    }, room.settings.timer * 1000 + 1000);
+        
+        // 무조건 다음 턴으로 강제 진행
+        if (room.currentDraft.answers >= 2) { 
+            room.draftCount++; 
+            nextDraftTurn(roomCode); 
+        }
+    }, room.settings.timer * 1000 + 500); // 0.5초 핑 유예 (답답함 제거)
 }
 
 function startMatchPhase(roomCode, isSecondHalf = false) {
@@ -224,7 +249,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     });
 
                     if (bestMate) {
-                        // ★ NaN 바이러스 차단 (|| 0.01)
                         let d = getDistance(p.x, p.y, bestMate.x, bestMate.y) || 0.01;
                         state.ball.vx = ((bestMate.x - p.x) / d) * 5.5; 
                         state.ball.vy = ((bestMate.y - p.y) / d) * 5.5;
@@ -247,7 +271,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         mates.sort((a,b) => getDistance(state.ball.x, state.ball.y, a.x, a.y) - getDistance(state.ball.x, state.ball.y, b.x, b.y));
                         let target = mates[0];
                         if(target) {
-                            // ★ NaN 바이러스 차단 (|| 0.01)
                             let dist = getDistance(state.ball.x, state.ball.y, target.x, target.y) || 0.01;
                             state.ball.vx = ((target.x - state.ball.x) / dist) * 3.0;
                             state.ball.vy = ((target.y - state.ball.y) / dist) * 3.0;
@@ -255,7 +278,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     } else if (state.phase === 'corner') {
                         let targetX = (state.possessionTeam === 1) ? 90 : 10;
                         let targetY = 50 + (Math.random() - 0.5) * 15;
-                        // ★ NaN 바이러스 차단 (|| 0.01)
                         let dist = getDistance(state.ball.x, state.ball.y, targetX, targetY) || 0.01;
                         state.ball.vx = ((targetX - state.ball.x) / dist) * 3.5;
                         state.ball.vy = ((targetY - state.ball.y) / dist) * 3.5;
@@ -407,7 +429,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
                 });
 
-                // ★ 킥오프 에러 완벽 차단 로직
                 if (state.isKickoff) {
                     if (p.team === state.kickoffTeam) {
                         let teammates = state.players.filter(m => 
@@ -417,7 +438,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let targetMate = behind.length > 0 ? behind[Math.floor(Math.random() * behind.length)] : teammates[0];
                         
                         if (targetMate) {
-                            // ★ NaN 바이러스 차단 (|| 1)
                             let d = getDistance(p.x, p.y, targetMate.x, targetMate.y) || 1;
                             let passPower = 2.6;
                             state.ball.vx = ((targetMate.x - p.x) / d) * passPower;
@@ -429,7 +449,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         }
                         state.isKickoff = false; 
                     } else {
-                        // 상대팀이 킥오프 전에 훔치는 현상 방지
                         return;
                     }
                 }
@@ -457,7 +476,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         aimY = Math.max(38, Math.min(62, aimY));
                         let dx = targetGoalX - p.x;
                         let dy = aimY - p.y;
-                        // ★ NaN 바이러스 차단 (|| 1)
                         let d = Math.sqrt(dx*dx + dy*dy) || 1;
                         state.ball.vx = (dx / d) * power * (0.92 + Math.random()*0.14);
                         state.ball.vy = (dy / d) * power * (0.90 + Math.random()*0.18) + (Math.random()-0.5)*0.42;
@@ -481,7 +499,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let target = strikersInBox[Math.floor(Math.random() * strikersInBox.length)];
                         io.to(roomCode).emit('playSound', 'kick');
                         let power = (p.stats?.pas || 80) / 24;   
-                        // ★ NaN 바이러스 차단 (|| 0.01)
                         let d = getDistance(p.x, p.y, target.x, target.y) || 0.01;
                         state.ball.vx = ((target.x - p.x) / d) * power;
                         state.ball.vy = ((target.y - p.y) / d) * power + (Math.random()-0.5)*0.5;
@@ -510,7 +527,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if ((enemyAhead || maxScore > 10) && bestMate) {
                     io.to(roomCode).emit('playSound', 'kick');
                     let power = (p.stats?.pas || 80) / 26; 
-                    // ★ NaN 바이러스 차단 (|| 0.01)
                     let d = getDistance(p.x, p.y, bestMate.x, bestMate.y) || 0.01; 
                     state.ball.vx = ((bestMate.x - p.x) / d) * power;
                     state.ball.vy = ((bestMate.y - p.y) / d) * power + (Math.random()-0.5)*0.2;
