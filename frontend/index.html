@@ -19,6 +19,8 @@
         
         /* ★ 드래프트 화면에서의 선수 크기 (크게 복구) */
         #draft-pitch .player-node { width: 35px; height: 35px; font-size: 10px; }
+
+        #draft-pitch .player-node, #halftime-pitch .player-node { width: 35px; height: 35px; font-size: 10px; }
         
         .player-placed { background: #3867d6; cursor: default; }
         
@@ -100,7 +102,9 @@
     <script>
         window.addEventListener('beforeunload', function (e) { e.preventDefault(); e.returnValue = ''; });
 
-        const socket = io('https://soccer-game-g9tc.onrender.com'); 
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const socketURL = isLocal ? 'http://localhost:3000' : 'https://soccer-game-g9tc.onrender.com';
+        const socket = io(socketURL);
         
         const sfxKick = new Audio('https://assets.mixkit.co/active_storage/sfx/2105/2105-preview.mp3');
         const sfxWhistle = new Audio('https://assets.mixkit.co/active_storage/sfx/316/316-preview.mp3');
