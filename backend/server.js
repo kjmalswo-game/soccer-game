@@ -940,9 +940,19 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     let bestOption = passOptions.length > 0 ? passOptions[0] : null;
 
                     let ballSpeedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
+                    
+                    // [핵심 개선 1: 완벽한 퍼스트 터치]
+                    // 공이 빠르게 날아올 때, 튕겨나가지 않도록 완벽하게 속도를 죽이고 선수의 이동 방향(몸 앞)에 살짝 잡아놓음
                     if (ballSpeedSq > 10) { 
-                        state.ball.vx *= 0.05; state.ball.vy *= 0.05; state.ball.x = p.x; state.ball.y = p.y; 
-                        p.cooldown = 1; state.eventText = "볼 컨트롤"; return; 
+                        state.ball.vx = 0; 
+                        state.ball.vy = 0; 
+                        state.ball.x = p.x + (dir * 0.5); // 몸 앞쪽으로 예쁘게 잡아놓기
+                        state.ball.y = p.y; 
+                        
+                        // 쿨다운(경직)을 1에서 0으로 아예 없애버림. 터치하자마자 곧바로 다음 드리블이나 패스를 이어감
+                        p.cooldown = 0; 
+                        state.eventText = "볼 컨트롤";
+                        return; 
                     }
 
                     let wantsToHold = (p.role === 'FW' && inAttackingHalf);
@@ -964,8 +974,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         io.to(roomCode).emit('playSound', 'kick');
                         
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
-                        
-                        // [핵심 개선] 롱 스루패스가 너무 쎄서 라인 밖으로 나가는 현상 억제 (분모를 4.5 -> 5.5로 올려 파워 깎음)
                         let powerDivider = bestOption.isThrough ? 5.5 : 4.5;
                         let power = Math.max(2.5, Math.min(d / powerDivider, 5.0)); 
 
@@ -997,30 +1005,39 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 let evadeX = dx / dist; let evadeY = dy / dist;
                                 
                                 if (enemyInFront) {
-                                    // [핵심 개선] 정면으로 마주치고 무한 경합하는 현상 파괴
                                     let sideDir = (p.y > 50) ? -1 : 1; 
-                                    // 중앙 근처면 랜덤으로 측면을 골라 뻔하게 고착화되는 현상 방지
                                     if (Math.abs(p.y - 50) < 5) sideDir = Math.random() < 0.5 ? -1 : 1;
                                     
-                                    // 측면(Y축)으로 강하게 꺾어서 상대가 반응하기 전에 탈출
-                                    state.ball.vx = (evadeX * 0.3) + (dir * 0.4); 
-                                    state.ball.vy = (sideDir * 3.0); 
-                                    state.eventText = wantsToHold ? "🛡️ 등지기 (키핑)" : "⚡ 측면 돌파!";
+                                    // [핵심 개선 2: 이동 컨트롤 타이트하게]
+                                    // 공을 옆으로 칠 때(측면 돌파) 공이 튕겨나가는 강도를 3.0에서 1.2로 확 줄임
+                                    state.ball.vx = (evadeX * 0.2) + (dir * 0.4); 
+                                    state.ball.vy = (sideDir * 1.2); 
+                                    state.eventText = wantsToHold ? "🛡️ 등지기 (키핑)" : "⚡ 짧은 측면 터치!";
                                 } else {
-                                    state.ball.vx = (evadeX * 0.8) + (dir * 1.8); 
-                                    state.ball.vy = evadeY * 0.8; 
+                                    // 앞으로 밀고 나갈 때도 강도를 1.8 -> 1.0으로 낮춰 발밑에 밀착시킴
+                                    state.ball.vx = (evadeX * 0.6) + (dir * 1.0); 
+                                    state.ball.vy = evadeY * 0.6; 
                                     state.eventText = wantsToHold ? "🛡️ 볼 지키기" : "⚡ 전진 탈압박!";
                                 }
-                                p.cooldown = 2; 
+                                // 드리블 후 경직 시간을 2에서 1로 줄여 선수가 즉시 공에 따라붙도록 함
+                                p.cooldown = 1; 
                             }
                         } else {
                             let centerDriveVy = (50 - p.y) * 0.05 + (Math.random() - 0.5);
                             if (inFinalThird && Math.random() < 0.3) {
-                                state.ball.vx = dir * pSpeed * 2.2; state.ball.vy = centerDriveVy * 1.0; 
-                                state.eventText = "⚡ 공간 돌파!"; p.cooldown = 4; 
+                                // [핵심 개선 3: 치달 안정화] 빈 공간으로 길게 칠 때도 너무 멀리 나가지 않게 하향
+                                state.ball.vx = dir * pSpeed * 1.6; 
+                                state.ball.vy = centerDriveVy * 0.8; 
+                                state.eventText = "⚡ 공간 돌파!"; 
+                                // 경직 시간 4 -> 2
+                                p.cooldown = 2; 
                             } else {
-                                state.ball.vx = dir * pSpeed * 1.2; state.ball.vy = centerDriveVy * 0.8; 
-                                state.eventText = wantsToHold ? "🛡️ 볼 키핑" : "전진 드리블"; p.cooldown = 2; 
+                                // 기본 전진 드리블 시 발끝에 완전히 붙이도록 스피드 하향
+                                state.ball.vx = dir * pSpeed * 0.9; 
+                                state.ball.vy = centerDriveVy * 0.4; 
+                                state.eventText = wantsToHold ? "🛡️ 볼 키핑" : "전진 드리블"; 
+                                // 경직 시간 2 -> 1
+                                p.cooldown = 1; 
                             }
                         }
                     }
