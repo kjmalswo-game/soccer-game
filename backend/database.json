@@ -144,6 +144,6 @@
     {"id": 127, "name": "루크 쇼", "stats": {"spd": 82, "sht": 62, "pas": 80}},
     {"id": 128, "name": "코나테", "stats": {"spd": 84, "sht": 55, "pas": 76}},
     {"id": 129, "name": "리산드로", "stats": {"spd": 83, "sht": 58, "pas": 79}},
-    {"id": 130, "name": "스톤스", "stats": {"spd": 79, "sht": 55, "pas": 81}},
+    {"id": 130, "name": "스톤스", "stats": {"spd": 79, "sht": 55, "pas": 81}}
   ]
 }
