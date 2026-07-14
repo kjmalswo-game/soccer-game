@@ -123,6 +123,6 @@
     {"id": 97, "name": "밀리탕", "stats": {"spd": 81, "sht": 55, "pas": 75}},
     {"id": 98, "name": "트로사르", "stats": {"spd": 84, "sht": 80, "pas": 82}},
     {"id": 99, "name": "솔랑케", "stats": {"spd": 80, "sht": 86, "pas": 73}},
-    {"id": 100, "name": "벤제마", "stats": {"spd": 82, "sht": 91, "pas": 85}},
+    {"id": 100, "name": "벤제마", "stats": {"spd": 82, "sht": 91, "pas": 85}}
   ]
 }
