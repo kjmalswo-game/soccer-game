@@ -53,7 +53,7 @@ function resetPositions(state, kickoffTeam) {
     state.passTargetId = null; 
     state.players.forEach(p => { p.x = p.baseX; p.y = p.baseY; p.cooldown = 0; });
     const striker = state.players.find(p => p.team === kickoffTeam && p.role === 'FW') || state.players.find(p => p.team === kickoffTeam);
-    if (striker) { striker.x = 50; striker.y = kickoffTeam === 1 ? 52 : 48; }
+    if (striker) { striker.x = kickoffTeam === 1 ? 47 : 53; striker.y = 50; }
 }
 
 function emitUpdate(roomCode, state) {
@@ -165,7 +165,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             ]
         };
     } else {
-        room.matchState.half = 2; room.matchState.ticks = 0; room.matchState.phase = 'play'; room.matchState.isPaused = false; room.matchState.passTargetId = null;
+            room.matchState.half = 2; room.matchState.ticks = 0; room.matchState.phase = 'play'; room.matchState.isPaused = false; room.matchState.passTargetId = null;
+            room.matchState.players.forEach(p => {
+            p.baseX = 100 - p.baseX;
+            p.baseY = 100 - p.baseY;
+        });
     }
 
     resetPositions(room.matchState, isSecondHalf ? 2 : 1);  
@@ -256,7 +260,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             state.ball.x += state.ball.vx; state.ball.y += state.ball.vy;
             state.ball.vx *= 0.82; state.ball.vy *= 0.82; 
             
-            if (state.ball.y <= 0 || state.ball.y >= 100) { setupSetPiece(state, 'throw_in'); return; }
+            if (state.ball.y <= 0 || state.ball.y >= 100) { setupSetPiece(state, 'throw_in', state.lastTouchTeam === 1 ? 2 : 1); return; }
             if (state.ball.x <= 0) {
                 if (state.ball.y >= 38 && state.ball.y <= 62) { handleGoal(room, 2); return; } 
                 else { setupSetPiece(state, state.lastTouchTeam === 1 ? 'corner' : 'goal_kick', 1); return; }
@@ -295,8 +299,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         state.players.forEach(p => {
             if (p.cooldown > 0) p.cooldown--;
             let targetX = p.baseX, targetY = p.baseY;
-            let dir = (p.team === 1) ? 1 : -1; 
-            let ownGoalX = (p.team === 1) ? 0 : 100;
+            let actualSide = (state.half === 2) ? (p.team === 1 ? 2 : 1) : p.team;
+            let dir = (actualSide === 1) ? 1 : -1;
+            let ownGoalX = (actualSide === 1) ? 0 : 100;
             
             let myDistArr = (p.team === 1) ? distArr1 : distArr2;
             let rankObj = myDistArr.find(obj => obj.p === p);
@@ -460,8 +465,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                 if (p.role === 'GK') {
                     let isInBox = Math.abs(p.x - ownGoalX) < 20 && p.y > 20 && p.y < 80;
-                    if (isInBox) {
-                        state.phase = 'gk_hold'; state.gkHolder = p; state.setPieceTimer = 15;
+                    // 골킥이나 오픈 플레이 직후의 겹침 현상을 방지하기 위해 쿨타임 및 페이즈 체크
+                    if (isInBox && state.phase === 'play' && state.setPieceTimer <= 0) {
+                        state.phase = 'gk_hold';
+                        state.gkHolder = p;
+                        state.setPieceTimer = 15;
                         state.ball.vx = 0; state.ball.vy = 0; state.ball.x = p.x; state.ball.y = p.y;
                         state.eventText = "키퍼 선방!"; p.cooldown = 20;
                     } else {
@@ -603,7 +611,9 @@ function setupSetPiece(state, type, sideTeam = 1) {
         state.eventText = "스로인"; state.ball.y = state.ball.y <= 0 ? 2 : 98;
         state.ball.x = Math.max(2, Math.min(98, state.ball.x)); 
         let fieldPlayers = state.players.filter(p => p.role !== 'GK');
-        let thrower = fieldPlayers.reduce((prev, curr) => (getDistance(curr.x, curr.y, state.ball.x, state.ball.y) < getDistance(prev.x, prev.y, state.ball.x, state.ball.y) ? curr : prev));
+        let thrower = fieldPlayers
+            .filter(p => p.team === sideTeam)
+            .reduce((prev, curr) => (getDistance(curr.x, curr.y, state.ball.x, state.ball.y) < getDistance(prev.x, prev.y, state.ball.x, state.ball.y) ? curr : prev));
         
         state.throwerId = thrower.id; state.possessionTeam = thrower.team;
         state.players.forEach(p => {
