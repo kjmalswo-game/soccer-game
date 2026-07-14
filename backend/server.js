@@ -401,6 +401,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             state.lastPasserId = state.kickerId; 
                             state.eventText = "🎯 코너킥 크로스!";
                         } 
+                        // ★ 완전 무결한 골킥 로직: 불필요한 p.team 등 참조 에러 유발 코드 원천 삭제
                         else if (state.phase === 'goal_kick') {
                             let kickDir = (state.possessionTeam === leftTeam) ? 1 : -1;
                             state.ball.vx = kickDir * 7.5; 
@@ -419,6 +420,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
                     state.phase = 'play'; state.gkHolder = null; state.throwerId = null; state.kickerId = null;
                 }
+                // ★ 주의: 선수들을 굳어버리게 만들던 return 코드는 이 자리에서 완전히 소멸되었습니다.
             }
 
             // --- 2. 물리 연산 ---
@@ -429,8 +431,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if (state.ball.shotTicks && state.ball.shotTicks > 0) state.ball.shotTicks--;
                 
                 let speedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
-                
-                // [개선 3] 슈팅 시 비정상적으로 빠르던 최고 속도 제한(캡)을 169에서 81(초속 9)로 현실적으로 하향
                 let maxSpeedSq = (state.ball.shotTicks > 0) ? 81 : 25; 
                 
                 if (speedSq > maxSpeedSq) { 
@@ -453,7 +453,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             
             let minDist1 = distArr1.length > 0 ? Math.min(...distArr1.map(o => o.dist)) : Infinity;
             let minDist2 = distArr2.length > 0 ? Math.min(...distArr2.map(o => o.dist)) : Infinity;
-            // ★ 인플레이 상황에서만 거리 기반으로 소유권 실시간 판정 (세트피스 시 소유권 고정)
+
+            // ★ 중요: 인플레이 상황(play)에서만 소유권을 판정하도록 락(Lock)을 걸어둠
+            // (골킥 준비 시간에 엉뚱하게 소유권이 넘어가서 골킥이 자책골로 변하는 치명적 버그 차단)
             if (state.phase === 'play') {
                 if(minDist1 < minDist2 && minDist1 < 8) state.possessionTeam = 1;
                 else if(minDist2 <= minDist1 && minDist2 < 8) state.possessionTeam = 2;
@@ -462,7 +464,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             let attTeam = state.possessionTeam;
             let isLooseBall = (minDist1 > 6 && minDist2 > 6);
             
-            // ★ 루즈볼 시 특정 선수 지정 해제
             if (isLooseBall) state.passTargetId = null; 
 
             let pTargetX = isLooseBall ? state.ball.x + (state.ball.vx * 3) : state.ball.x;
@@ -480,7 +481,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     if (p.team === rightTeam && p.x < defLineRight) defLineRight = p.x;
                 }
             });
-
             // --- 4. 오프더볼 AI ---
             state.players.forEach(p => {
                 if (p.cooldown > 0) p.cooldown--;
