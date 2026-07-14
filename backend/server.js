@@ -735,8 +735,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let d = Math.sqrt(dx*dx + dy*dy) || 1;
                         
                         if (d < 1.2) { 
-                            // [개선 5] 선수들이 딱 붙어 한 명처럼 이동하는 괴현상(Merging) 파괴
-                            let repelForce = (d < 0.5) ? 0.8 : 0.1; // 거리가 너무 가까우면 강하게 밀어냄
+                            let repelForce = (d < 0.5) ? 0.8 : 0.1;
 
                             if (p.team === other.team) {
                                 let repel = (1.2 - d) * repelForce;
@@ -747,30 +746,62 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     let otherHasBall = (ballCarrier && ballCarrier.id === other.id);
 
                                     if (pHasBall || otherHasBall) {
-                                        p.duelCooldown = 12; other.duelCooldown = 12;
-                                        p.cooldown = 4; other.cooldown = 4;
+                                        // [개선 1] 연속적인 무한 경합(비비기) 방지를 위해 경합 면역 쿨타임을 15틱(1.5초)으로 부여
+                                        // 이 시간 동안은 서로 다시 비비적거리지 않고 자신의 플레이를 이어감
+                                        p.duelCooldown = 15; 
+                                        other.duelCooldown = 15;
                                         
-                                        if (Math.random() < 0.12) {
-                                            state.ball.vx = (Math.random() - 0.5) * 4; state.ball.vy = (Math.random() - 0.5) * 4;
-                                            state.eventText = "⚔️ 태클 성공!"; state.possessionTeam = 0; state.passTargetId = null; 
+                                        let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
+                                        let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
+                                        
+                                        let pScore = pSpeed + (Math.random() * 30);
+                                        let oScore = oSpeed + (Math.random() * 30);
+
+                                        // [개선 2] 1차 경합 패배 시 확실한 리액션 부여 (승패 명확화)
+                                        if (Math.random() < 0.15 || (oScore > pScore + 15 && !pHasBall)) {
+                                            // 턴오버 발생 (수비수 완승)
+                                            state.ball.vx = (Math.random() - 0.5) * 4; 
+                                            state.ball.vy = (Math.random() - 0.5) * 4;
+                                            state.eventText = "⚔️ 태클 성공!";
+                                            state.possessionTeam = 0; 
+                                            state.passTargetId = null; 
+                                            
+                                            // 공을 뺏긴 패자는 길게 멈칫(스턴)하고, 승자는 딜레이 없이 즉각 움직임
+                                            if (pHasBall) { p.cooldown = 8; other.cooldown = 0; }
+                                            else { other.cooldown = 8; p.cooldown = 0; }
+                                            
+                                        } else {
+                                            // 턴오버는 안 났지만 몸싸움 승패 판정 (어거지 전진 차단)
+                                            if (pScore > oScore) {
+                                                other.cooldown = 8; // 수비수 튕겨나감 (리액션)
+                                                p.cooldown = 0; 
+                                                state.eventText = "💪 경합 버텨냄!";
+                                                targetX += (dx / d) * 2.5; targetY += (dy / d) * 2.5;
+                                            } else {
+                                                p.cooldown = 8; // 공격수 저지당함 (리액션)
+                                                other.cooldown = 0; 
+                                                state.eventText = "🧱 수비벽 블로킹!";
+                                                let repel = (1.2 - d) * 0.8;
+                                                targetX += (dx / d) * repel; targetY += (dy / d) * repel;
+                                            }
                                         }
-                                        targetX += (dx / d) * 1.5; targetY += (dy / d) * 1.5;
                                     } else {
+                                        // 공 없는 선수들끼리의 경합
                                         let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
                                         let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
                                         let pScore = pSpeed + (Math.random() * 20);
                                         let oScore = oSpeed + (Math.random() * 20);
 
                                         if (pScore > oScore) {
-                                            other.cooldown = 2; 
+                                            other.cooldown = 4; 
                                         } else {
-                                            p.cooldown = 2;
+                                            p.cooldown = 4;
                                             let repel = (1.2 - d) * 0.2;
                                             targetX += (dx / d) * repel; targetY += (dy / d) * repel;
                                         }
                                     }
                                 } else {
-                                    // 쿨타임 중이더라도 적과 완전히 겹치는 것은 물리적으로 강제 밀어내기
+                                    // 쿨타임 중이더라도 적과 겹치면 물리적으로 밀어내기
                                     let repel = (1.2 - d) * repelForce;
                                     targetX += (dx / d) * repel; targetY += (dy / d) * repel;
                                 }
@@ -981,15 +1012,17 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     let sideDir = (p.y > 50) ? -1 : 1; 
                                     if (Math.abs(p.y - 50) < 5) sideDir = Math.random() < 0.5 ? -1 : 1;
                                     
-                                    state.ball.vx = (evadeX * 0.1) + (dir * 0.3); 
-                                    state.ball.vy = (sideDir * 0.9); 
-                                    state.eventText = wantsToHold ? "🛡️ 등지기 (키핑)" : "⚡ 짧은 측면 터치!";
+                                    // [개선 3] 정면 억지 드리블 방지: 전진(dir) 벡터를 최소화하고, 측면(sideDir)으로 크게 꺾어서 피함
+                                    state.ball.vx = (evadeX * 0.3) + (dir * 0.1); // 기존 0.3 -> 0.1로 전진 본능 하향
+                                    state.ball.vy = (sideDir * 1.8); // 기존 0.9 -> 1.8로 확실하게 옆으로 꺾음
+                                    state.eventText = wantsToHold ? "🛡️ 등지기 (키핑)" : "⚡ 날카로운 턴!";
+                                    p.cooldown = 1; // 턴 동작을 위한 짧은 딜레이 부여
                                 } else {
                                     state.ball.vx = (evadeX * 0.4) + (dir * 0.8); 
                                     state.ball.vy = evadeY * 0.4; 
                                     state.eventText = wantsToHold ? "🛡️ 볼 지키기" : "⚡ 전진 탈압박!";
-                                }
-                                p.cooldown = 0; 
+                                    p.cooldown = 0; 
+                                } 
                             }
                         } else {
                             // [개선 2] 윙어 터치라인 아웃 버그 및 일자 드리블 방지 (컷 인사이드)
