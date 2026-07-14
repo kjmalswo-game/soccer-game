@@ -261,6 +261,33 @@
             popup.style.display = 'block';
             popup.style.animation = 'none'; popup.offsetHeight; popup.style.animation = null;
             setTimeout(() => { popup.style.display = 'none'; }, 2800);
+
+            const goalAlert = document.createElement('div');
+            goalAlert.style.position = 'absolute';
+            goalAlert.style.top = '20px';
+            goalAlert.style.right = '20px'; // 우측 상단 배치
+            goalAlert.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
+            goalAlert.style.color = '#fff';
+            goalAlert.style.padding = '15px 25px';
+            goalAlert.style.borderRadius = '8px';
+            goalAlert.style.fontSize = '18px';
+            goalAlert.style.fontWeight = 'bold';
+            goalAlert.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+            goalAlert.style.zIndex = '9999';
+            goalAlert.style.transition = 'opacity 0.5s ease-in-out';
+        
+            // 2. 서버에서 받은 시간과 득점자 텍스트 삽입
+            let teamName = data.team === 1 ? "블루팀" : "레드팀"; 
+            goalAlert.innerHTML = `⚽ <b>${data.scorer}</b> 득점! <br><span style="font-size:14px; color:#ccc;">${teamName} - ${data.time}</span>`;
+        
+            // 3. 화면에 추가
+            document.body.appendChild(goalAlert);
+        
+            // 4. 4초 뒤에 알림창이 서서히 사라지도록 애니메이션 처리
+            setTimeout(() => {
+                goalAlert.style.opacity = '0';
+                setTimeout(() => goalAlert.remove(), 500); // 완전히 삭제
+            }, 4000);
         });
 
         let draggedNode = null;
