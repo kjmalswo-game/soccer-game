@@ -928,18 +928,29 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 }
                             });
 
-                            let score = 0; let isThrough = false;
+                            let score = 0; let isThrough = false; let isCutback = false;
                             if (laneBlocked) score -= 2000; 
 
+                            // ★ 백패스 및 컷백 전면 개편
                             if (forwardDist < -2) {
-                                if (dist > 15) score -= 5000; 
-                                if (p.role === 'FW' && inAttackingHalf) score -= 5000;
-                                if (inFinalThird) score -= 9999; 
+                                // 1. 컷백 조건: 공을 가진 선수가 파이널 서드 깊숙한 곳(엔드라인 근처)에 있고
+                                let isDeep = (p.team === leftTeam && p.x > 82) || (p.team === rightTeam && p.x < 18);
+                                // 2. 받는 선수가 페널티 박스 중앙 득점권에 위치할 때
+                                let isReceiverInBox = (p.team === leftTeam && m.x > 70 && m.x < p.x) || (p.team === rightTeam && m.x < 30 && m.x > p.x);
+                                let isReceiverCentral = m.y > 25 && m.y < 75;
+
+                                if (isDeep && isReceiverInBox && isReceiverCentral) {
+                                    score += 5000; // 컷백은 엄청난 가산점을 받아 최우선 선택지가 됨
+                                    isCutback = true;
+                                } else {
+                                    // 컷백이 아닌 일반 백패스는 하프라인이든 어디든 점수를 대폭 깎아 원천 차단
+                                    score -= 8000; 
+                                }
                             }
 
-                            // [변칙성 1] 패스(pas) 스탯이 높은 선수는 전방 시야가 압도적으로 넓어 전진 패스 점수가 높음
+                            // 전진 패스 가산점 (음수인 forwardDist면 점수가 깎이므로 컷백 외의 일반 후진 패스는 철저히 배제됨)
                             if (inAttackingHalf) score += (forwardDist * (pPas > 85 ? 12.0 : 8.0)); 
-                            else score += (forwardDist * (pPas > 85 ? 5.5 : 4.0)); 
+                            else score += (forwardDist * (pPas > 85 ? 5.5 : 4.0));
 
                             if (inOwnHalf && isPressed && forwardDist > 10 && !laneBlocked) {
                                 score += 800; isThrough = true; 
@@ -963,7 +974,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 score += 15000; isThrough = true;
                             }
 
-                            if (score > 0) passOptions.push({ mate: m, score: score, dist: dist, isThrough: isThrough });
+                            if (score > 0) passOptions.push({ mate: m, score: score, dist: dist, isThrough: isThrough, isCutback: isCutback });
                         }
                     });
 
@@ -1006,12 +1017,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                         state.ball.vx = ((targetX - p.x) / d) * power; state.ball.vy = ((targetY - p.y) / d) * power; 
                         
-                        if (d > 20) {
+                        if (bestOption.isCutback) {
+                            state.eventText = "🎯 결정적 컷백!";
+                        } else if (d > 20) {
                             state.ball.airTicks = Math.floor(d / 5.0);
                             state.eventText = bestOption.isThrough ? "🎯 정교한 스루패스!" : "🚀 롱 패스 전환!";
-                        } else { state.eventText = bestOption.isThrough ? "창의적 스루패스!" : "연계 플레이"; }
+                        } else { 
+                            state.eventText = bestOption.isThrough ? "창의적 스루패스!" : "연계 플레이"; 
+                        }
                         
-                        state.passTargetId = bestOption.mate.id; state.lastPasserId = p.id; p.cooldown = 8; 
+                        state.passTargetId = bestOption.mate.id; state.lastPasserId = p.id; p.cooldown = 8;
                     } 
                     else {
                         // ★ 개선된 드리블 AI: 후퇴 절대 금지, 빈 공간을 향한 전진 돌파
