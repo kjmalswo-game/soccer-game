@@ -405,10 +405,17 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         } 
                         else if (state.phase === 'goal_kick') {
                             let kickDir = (state.possessionTeam === leftTeam) ? 1 : -1;
-                            state.ball.vx = kickDir * 7.5; 
-                            state.ball.vy = (Math.random() - 0.5) * 4.0; 
-                            state.ball.airTicks = 6;
-                            state.eventText = "👟 골킥 롱패스!";
+                            if (p.team === state.possessionTeam) {
+                                // 공격하는 팀 (골킥 차는 팀): 무리하게 안 올라가고 하프라인 아래쪽에서 받으러 옴
+                                if (p.role === 'FW') { targetX = 50 + (kickDir * 2) + organicX; targetY = p.baseY; } // 하프라인 선상
+                                else if (p.role === 'MF') { targetX = 50 - (kickDir * 10) + organicX; targetY = p.baseY; } // 하프라인 아래
+                                else { targetX = (p.team === leftTeam) ? 22 : 78; targetY = p.baseY; }
+                            } else {
+                                // 수비하는 팀 (골킥 막는 팀): 롱볼에 대비해 라인을 확실하게 뒤로 내림
+                                if (p.role === 'FW') { targetX = 50 + (kickDir * 5) + organicX; targetY = p.baseY; }
+                                else if (p.role === 'MF') { targetX = 50 + (kickDir * 15) + organicX; targetY = p.baseY; }
+                                else if (p.role === 'DF') { targetX = 50 + (kickDir * 30) + organicX; targetY = p.baseY; }
+                            }
                         }
                         else if (state.phase === 'free_kick') {
                             let targetX = state.ball.x + dir * 35;
@@ -745,20 +752,23 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let dx = p.x - other.x; let dy = p.y - other.y;
                             let d = Math.sqrt(dx*dx + dy*dy) || 1;
                             
-                            if (d < 1.2) { 
-                                let repelForce = (d < 0.5) ? 0.8 : 0.1;
-
+                            // 충돌 반경을 살짝 넓혀서 겹치기 전에 경합 판정 발동
+                            if (d < 1.5) { 
                                 if (p.team === other.team) {
-                                    let repel = (1.2 - d) * repelForce;
+                                    // 같은 팀끼리만 미세하게 밀어냄 (길막 방지)
+                                    let repelForce = (d < 0.5) ? 0.8 : 0.1;
+                                    let repel = (1.5 - d) * repelForce;
                                     targetX += (dx / d) * repel; targetY += (dy / d) * repel;
                                 } else {
+                                    // 적팀과의 경합 (움찔거림의 주범이던 기본 밀어내기 로직 삭제)
                                     if (p.duelCooldown <= 0 && other.duelCooldown <= 0) {
                                         let pHasBall = (ballCarrier && ballCarrier.id === p.id);
                                         let otherHasBall = (ballCarrier && ballCarrier.id === other.id);
 
                                         if (pHasBall || otherHasBall) {
-                                            p.duelCooldown = 25; 
-                                            other.duelCooldown = 25;
+                                            // ★ 3초(30틱) 동안 재경합 절대 금지 (무한 비비기 차단)
+                                            p.duelCooldown = 30; 
+                                            other.duelCooldown = 30;
                                             
                                             let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
                                             let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
@@ -767,39 +777,38 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                             let oScore = oSpeed + (Math.random() * 30);
 
                                             if (Math.random() < 0.20 || (oScore > pScore + 10 && !pHasBall)) {
-                                                state.ball.vx = (Math.random() - 0.5) * 5; 
-                                                state.ball.vy = (Math.random() - 0.5) * 5;
+                                                state.ball.vx = (Math.random() - 0.5) * 6; 
+                                                state.ball.vy = (Math.random() - 0.5) * 6;
                                                 state.eventText = "⚔️ 태클 탈취 턴오버!";
                                                 state.possessionTeam = 0; 
                                                 state.passTargetId = null; 
                                                 
                                                 if (pHasBall) { 
                                                     p.cooldown = 5; p.stunTicks = 15; 
-                                                    p.x -= (dx / d) * 2.5; p.y -= (dy / d) * 2.5; 
+                                                    p.x += (dx / d) * 3.0; p.y += (dy / d) * 3.0; // 확 밀쳐냄
                                                 } else { 
                                                     other.cooldown = 5; other.stunTicks = 15; 
-                                                    other.x += (dx / d) * 2.5; other.y += (dy / d) * 2.5;
+                                                    other.x -= (dx / d) * 3.0; other.y -= (dy / d) * 3.0;
                                                 }
                                             } else {
                                                 if (pScore > oScore) {
                                                     other.cooldown = 5; 
                                                     other.stunTicks = 15; 
-                                                    other.x += (dx / d) * 2.5; 
-                                                    other.y += (dy / d) * 2.5;
-                                                    state.eventText = "⚡ 벗겨냅니다!";
+                                                    other.x -= (dx / d) * 3.0; 
+                                                    other.y -= (dy / d) * 3.0;
+                                                    state.eventText = "⚡ 수비수를 벗겨냅니다!";
                                                 } else {
                                                     p.cooldown = 5; 
                                                     p.stunTicks = 10; 
-                                                    p.x -= (dx / d) * 2.0; p.y -= (dy / d) * 2.0;
+                                                    p.x += (dx / d) * 2.5; p.y += (dy / d) * 2.5;
                                                     state.eventText = "🧱 수비벽 지연!";
                                                     state.ball.vx *= 0.5; state.ball.vy *= 0.5;
                                                 }
                                             }
                                         }
-                                    } else {
-                                        let repel = (1.2 - d) * repelForce;
-                                        targetX += (dx / d) * repel; targetY += (dy / d) * repel;
                                     }
+                                    // 주의: else (쿨타임 중일 때) 블록을 아예 삭제했습니다.
+                                    // 이제 쿨타임 중에 스치면 물리적으로 버벅거리지 않고 부드럽게 스쳐 지나갑니다.
                                 }
                             }
                         }
@@ -817,9 +826,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                 if (p.stunTicks && p.stunTicks > 0) {
                     p.stunTicks--;
-                    moveSpeed *= 0.25; // 0이 아니라 25%의 속도로 비틀거리게 만듦
+                    moveSpeed *= 0.3; // 30%의 속도로 비틀거림
+                    
+                    // 핵심: 공을 쫓아 돌진하는 것을 멈추고, 밸런스를 잡기 위해 자기 포메이션 자리로 방향을 잃고 물러남
+                    targetX = p.baseX; 
+                    targetY = p.baseY; 
                 }
-            
+
                 let distToTarget = getDistance(p.x, p.y, targetX, targetY) || 1;
                 if (distToTarget > moveSpeed) {
                     p.x += ((targetX - p.x) / distToTarget) * moveSpeed;
