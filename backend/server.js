@@ -79,17 +79,60 @@ io.on('connection', (socket) => {
         socket.join(roomCode); socket.emit('roomCreated', roomCode, db);
     });
     socket.on('joinRoom', (roomCode) => {
+        // ★ [추가] 치트키: '000000' 입력 시 즉시 테스트 모드 방 생성 (더미 AI 포함)
+        if (roomCode === '000000') {
+            const testRoomCode = 'TEST_' + generateRoomCode(); // 다중 접속 꼬임 방지용 고유 코드
+            rooms[testRoomCode] = {
+                players: {
+                    // 유저가 '입장하기'를 눌렀기 때문에 클라이언트는 myTeamId = 2로 인식합니다.
+                    // 하프타임 교체 버그를 막기 위해 AI를 1P(Team 1)로, 유저를 2P(Team 2)로 배정합니다.
+                    'dummy_ai': { id: 'player1', ready: true, team: [], formation: '4-3-3' },
+                    [socket.id]: { id: 'player2', ready: false, team: [], formation: null }
+                },
+                settings: { timer: db.settings.draftTimers[1], formation: null },
+                state: 'lobby',
+                availablePlayers: [...db.players],
+                isTestMode: true // 드래프트 스킵을 위한 테스트 모드 플래그
+            };
+            socket.join(testRoomCode);
+            socket.emit('roomJoined', testRoomCode, db); 
+            // 0.5초 뒤 AI(더미)가 입장했다고 클라이언트 UI에 알림
+            setTimeout(() => { io.to(testRoomCode).emit('playerJoinedLobby'); }, 500); 
+            return;
+        }
+
+        // 기존 일반 조인 로직
         if (rooms[roomCode] && Object.keys(rooms[roomCode].players).length < 2) {
             rooms[roomCode].players[socket.id] = { id: 'player2', ready: false, team: [] };
             socket.join(roomCode); socket.emit('roomJoined', roomCode, db); io.to(roomCode).emit('playerJoinedLobby'); 
-        } else { socket.emit('error', '방이 가득 찼거나 존재하지 않는 코드입니다.'); }
+        } else { 
+            socket.emit('error', '방이 가득 찼거나 존재하지 않는 코드입니다.'); 
+        }
     });
     socket.on('setTimer', (roomCode, timerValue) => { if (rooms[roomCode]) { rooms[roomCode].settings.timer = timerValue; socket.to(roomCode).emit('timerUpdated', timerValue); } });
     socket.on('playerReady', (roomCode, formationId) => {
         const room = rooms[roomCode]; if(!room || !room.players[socket.id]) return; 
         room.players[socket.id].formation = formationId; room.players[socket.id].ready = true;
         const playersArr = Object.values(room.players);
-        if (playersArr.every(p => p.ready) && playersArr.length === 2) startDraftPhase(roomCode);
+        
+        if (playersArr.every(p => p.ready) && playersArr.length === 2) {
+            // ★ [추가] 테스트 모드일 경우: 드래프트를 스킵하고 랜덤 선수 20명을 즉시 꽉꽉 채워넣음
+            if (room.isTestMode) {
+                playersArr.forEach(pData => {
+                    for (let i = 0; i < 10; i++) {
+                        if (room.availablePlayers.length === 0) break;
+                        // DB에 남은 선수 중 무작위로 하나를 뽑아서 슬롯에 할당
+                        let idx = Math.floor(Math.random() * room.availablePlayers.length);
+                        pData.team.push({ slot: i, player: room.availablePlayers.splice(idx, 1)[0] });
+                    }
+                });
+                // 드래프트 과정을 아예 건너뛰고 바로 경기장으로 이동
+                startMatchPhase(roomCode, false);
+            } else {
+                // 일반 게임일 경우 정상적으로 드래프트 돌입
+                startDraftPhase(roomCode);
+            }
+        }
     });
     socket.on('playerPlaced', (roomCode, slotId, playerInfo) => {
         const room = rooms[roomCode]; if(!room || !room.currentDraft) return;
@@ -546,6 +589,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                 function executePassOrDribble() {
                     let bestMate = null; let maxScore = -999;
+                    let chosenMinEnemyDist = Infinity; // ★ 변수 스코프 에러 해결을 위한 백업 변수 추가
                     
                     state.players.forEach(m => {
                         if (m.team === p.team && m !== p && m.role !== 'GK') {
@@ -564,7 +608,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 }
                             });
                             
-                            // ★ [수정] 수비수가 멀리 있는 윙어나 반대편 동료에게 롱킥/전환 패스를 시도할 때
+                            // 수비수가 멀리 있는 윙어나 반대편 동료에게 롱킥/전환 패스를 시도할 때
                             let isLongSwitch = (p.role === 'DF' && dist > 35);
                             if (isLongSwitch) {
                                 score += 400; // 롱 크로스 및 방향 전환 선호도 가중치
@@ -582,20 +626,24 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (isWide) score += 150;
                             else if (minEnemyDistToM < 8) score -= 200;
 
-                            if (score > maxScore) { maxScore = score; bestMate = m; }
+                            if (score > maxScore) { 
+                                maxScore = score; 
+                                bestMate = m; 
+                                chosenMinEnemyDist = minEnemyDistToM; // ★ 최적의 동료를 찾았을 때 상대 거리를 바깥 변수에 저장
+                            }
                         }
                     });
 
                     if (bestMate && maxScore > -300) {
                         let isThroughPass = false;
-                        let isLobbingPass = false; // ★ 로빙 패스 활성화 플래그
+                        let isLobbingPass = false; 
                         let targetX = bestMate.x; let targetY = bestMate.y;
 
                         let dist = getDistance(p.x, p.y, targetX, targetY);
                         let spaceBehind = (p.team === 1) ? (100 - bestMate.x) : (bestMate.x - 0);
                         
                         let isLongSwitch = (p.role === 'DF' && dist > 35);
-                        let isCounterAttack = (minEnemyDistToM > 18);
+                        let isCounterAttack = (chosenMinEnemyDist > 18); // ★ 스코프 에러 해결 (백업된 변수 사용)
                         let isSidePlay = (bestMate.y < 20 || bestMate.y > 80);
 
                         if (isLongSwitch) {
@@ -613,13 +661,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         io.to(roomCode).emit('playSound', 'kick');
                         let power = ((p.stats && p.stats.pas ? p.stats.pas : 80) / 45); 
                         if (isThroughPass) power *= 1.4; 
-                        if (isLobbingPass) power *= 1.6; // 공중볼 포물선 전개를 위한 속도 가중치
+                        if (isLobbingPass) power *= 1.6; 
 
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
                         state.ball.vx = ((targetX - p.x) / d) * power;
                         state.ball.vy = ((targetY - p.y) / d) * power; 
                         
-                        // ★ [추가] 로빙 패스 발동 시 거리 비례 체공 시간 계산 주입
+                        // 로빙 패스 발동 시 거리 비례 체공 시간 계산 주입
                         if (isLobbingPass) {
                             state.ball.airTicks = Math.max(3, Math.floor(d / (power * 1.3)));
                             state.eventText = "⚡ 롱 킥 / 방향 전환!";
