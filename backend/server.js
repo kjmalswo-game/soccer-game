@@ -589,7 +589,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                 function executePassOrDribble() {
                     let bestMate = null; let maxScore = -999;
-                    let chosenMinEnemyDist = Infinity; // ★ 변수 스코프 에러 해결을 위한 백업 변수 추가
+                    let chosenMinEnemyDist = Infinity;
                     
                     state.players.forEach(m => {
                         if (m.team === p.team && m !== p && m.role !== 'GK') {
@@ -608,11 +608,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 }
                             });
                             
-                            // 수비수가 멀리 있는 윙어나 반대편 동료에게 롱킥/전환 패스를 시도할 때
                             let isLongSwitch = (p.role === 'DF' && dist > 35);
                             if (isLongSwitch) {
-                                score += 400; // 롱 크로스 및 방향 전환 선호도 가중치
-                                if (laneBlocked) score += 1800; // 로빙으로 넘길 것이므로 패스 경로 막힘 페널티 대부분 상쇄
+                                score += 400; 
+                                if (laneBlocked) score += 1800; 
                             } else {
                                 if (laneBlocked) score -= 2000; 
                             }
@@ -629,11 +628,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (score > maxScore) { 
                                 maxScore = score; 
                                 bestMate = m; 
-                                chosenMinEnemyDist = minEnemyDistToM; // ★ 최적의 동료를 찾았을 때 상대 거리를 바깥 변수에 저장
+                                chosenMinEnemyDist = minEnemyDistToM;
                             }
                         }
                     });
 
+                    // 1. 패스 옵션이 열려 있을 때 (Pass Logic)
                     if (bestMate && maxScore > -300) {
                         let isThroughPass = false;
                         let isLobbingPass = false; 
@@ -643,7 +643,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let spaceBehind = (p.team === 1) ? (100 - bestMate.x) : (bestMate.x - 0);
                         
                         let isLongSwitch = (p.role === 'DF' && dist > 35);
-                        let isCounterAttack = (chosenMinEnemyDist > 18); // ★ 스코프 에러 해결 (백업된 변수 사용)
+                        let isCounterAttack = (chosenMinEnemyDist > 18);
                         let isSidePlay = (bestMate.y < 20 || bestMate.y > 80);
 
                         if (isLongSwitch) {
@@ -653,7 +653,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (spaceBehind > 15 && Math.random() < throughProb && bestMate.role !== 'DF') {
                                 isThroughPass = true;
                                 targetX += dir * Math.min(spaceBehind * 0.35, 15); 
-                                // 장거리 스루패스 시 일부 확률로 로빙 스루패스로 고공 전개
                                 if (dist > 30 && Math.random() < 0.5) isLobbingPass = true;
                             }
                         }
@@ -667,7 +666,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         state.ball.vx = ((targetX - p.x) / d) * power;
                         state.ball.vy = ((targetY - p.y) / d) * power; 
                         
-                        // 로빙 패스 발동 시 거리 비례 체공 시간 계산 주입
                         if (isLobbingPass) {
                             state.ball.airTicks = Math.max(3, Math.floor(d / (power * 1.3)));
                             state.eventText = "⚡ 롱 킥 / 방향 전환!";
@@ -684,14 +682,58 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             }
                         });
                     } 
+                    // 2. 패스 옵션이 막혀 있거나, 공을 막 받았을 때 (Trap & Dribble Logic)
                     else {
-                        let currentVySign = state.ball.vy >= 0 ? 1 : -1;
-                        let dodgeY = currentVySign * 1.5; 
-                        if (Math.abs(state.ball.vy) < 0.2) dodgeY = (p.y > 50) ? -1.5 : 1.5;
+                        let ballSpeedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
+                        
+                        let nearestEnemy = null;
+                        let minDistToEnemy = Infinity;
+                        state.players.forEach(e => {
+                            if (e.team !== p.team && e.role !== 'GK') {
+                                let d = getDistance(p.x, p.y, e.x, e.y);
+                                if (d < minDistToEnemy) {
+                                    minDistToEnemy = d;
+                                    nearestEnemy = e;
+                                }
+                            }
+                        });
 
-                        if (enemyAhead) { state.ball.vx = dir * 0.5; state.ball.vy = dodgeY * 1.5; } 
-                        else { state.ball.vx = dir * 1.5; state.ball.vy = dodgeY * 0.3; }
-                        p.cooldown = 4; 
+                        // ★ [NEW] 퍼스트 터치 (트래핑): 강한 패스를 받았을 때 공이 튀어 나가는 현상 방지
+                        if (ballSpeedSq > 9) { 
+                            state.ball.vx *= 0.15; // 공의 관성을 확 죽여서 발밑에 붙임
+                            state.ball.vy *= 0.15;
+                            state.ball.x = p.x + (dir * 0.3); // 선수 바로 앞에 공 위치 설정
+                            state.ball.y = p.y;
+                            p.cooldown = 2; // 즉시 다음 동작을 할 수 있도록 쿨타임 최소화
+                            state.eventText = "볼 컨트롤";
+                        } 
+                        // ★ [NEW] 상황 판단 드리블 로직
+                        else {
+                            let pSpeed = ((p.stats && p.stats.spd ? p.stats.spd : 80) / 100) * 1.3;
+                            
+                            // 패스가 막혔는데 적이 가까이 있을 때 -> 탈압박 (Evade)
+                            if (minDistToEnemy < 8 && nearestEnemy) {
+                                let dx = p.x - nearestEnemy.x;
+                                let dy = p.y - nearestEnemy.y;
+                                let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                                
+                                // 적의 반대 방향이되, 살짝 전진하는 방향으로 공을 툭 치고 나감
+                                state.ball.vx = (dx / dist) * 1.0 + (dir * 0.5);
+                                state.ball.vy = (dy / dist) * 1.2;
+                                state.eventText = "⚡ 탈압박 드리블!";
+                            } 
+                            // 적이 주변에 없을 때 -> 전진 드리블 (Drive)
+                            else {
+                                // 윙어는 중앙으로 파고들고, 중앙 선수는 직진
+                                let centerDriveVy = (50 - p.y) * 0.03; 
+                                state.ball.vx = dir * pSpeed * 1.1; // 본인 달리기 속도와 딱 맞는 세기로 공을 몰고 감
+                                state.ball.vy = centerDriveVy;
+                                state.eventText = "드리블 돌파!";
+                            }
+                            
+                            // 공이 선수보다 멀리 도망가지 않도록 아주 짧은 드리블 쿨타임 적용
+                            p.cooldown = 3; 
+                        }
                     }
                 }
             } // 터치 및 스마트 판단 if문 끝
