@@ -67,7 +67,7 @@ function resetPositions(state, kickoffTeam) {
 function emitUpdate(roomCode, state) {
     let totalTicks = state.ticks;
     let gameSeconds = (totalTicks / 10) * (db.settings.gameMinutesPerHalf * 60 / db.settings.halfDurationRealSeconds);
-    if (state.half === 2) gameSeconds += 45 * 60; 
+    if (state.half === 2) gameSeconds += db.settings.gameMinutesPerHalf * 60;
     io.to(roomCode).emit('matchUpdate', {
         gameSeconds: gameSeconds, event: state.eventText, ball: state.ball, players: state.players, score: state.score
     });
@@ -144,6 +144,17 @@ io.on('connection', (socket) => {
             let tempX = p1.baseX, tempY = p1.baseY, tempRole = p1.role;
             p1.baseX = p2.baseX; p1.baseY = p2.baseY; p1.role = p2.role; p1.x = p1.baseX; p1.y = p1.baseY;
             p2.baseX = tempX; p2.baseY = tempY; p2.role = tempRole; p2.x = p2.baseX; p2.y = p2.baseY;
+        }
+    });
+    socket.on('disconnect', () => {
+        for (const roomCode in rooms) {
+            const room = rooms[roomCode];
+            if (room.players[socket.id]) {
+                if (room.matchInterval) clearInterval(room.matchInterval);
+                if (room.draftTimeout) clearTimeout(room.draftTimeout);
+                socket.to(roomCode).emit('error', '상대방의 연결이 끊겨 게임이 종료되었습니다.');
+                delete rooms[roomCode];
+            }
         }
     });
 });
