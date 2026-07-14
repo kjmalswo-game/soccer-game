@@ -382,7 +382,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
         let ballCarrier = state.players.find(b => b.team === attTeam && getDistance(b.x, b.y, state.ball.x, state.ball.y) < 6);
 
-        // --- 5. 수비 및 오프더볼 AI (라인 유지 및 침투) ---
+        // --- 4. 수비 및 오프더볼 AI (라인 유지 및 침투) ---
             state.players.forEach(p => {
                 if (p.cooldown > 0) p.cooldown--;
                 
@@ -433,30 +433,24 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         else {
                             // 포지션별 유기적 라인 컨트롤
                             if (p.role === 'DF') {
-                                // 수비수는 하프라인을 넘어 전진하며 공격 지원 (라인 끌어올리기)
                                 targetX = (p.team === 1) ? Math.min(55, state.ball.x - 15) : Math.max(45, state.ball.x + 15);
                                 targetY = p.baseY;
                             }
                             else if (p.role === 'MF') {
-                                // 미드필더는 패스를 받기 위해 공 주변에서 지원
                                 targetX = state.ball.x + (dir * 5);
                                 targetY = p.baseY;
                             }
                             else if (p.role === 'FW') {
-                                // 공격수는 상대 수비 라인 뒤로 쇄도(침투)하여 공격 옵션 창출
                                 targetX = state.ball.x + (dir * 25);
-                                
-                                // 오프사이드 방지를 위한 최대 전진 한계선
                                 if (p.team === 1 && targetX > 90) targetX = 90;
                                 if (p.team === 2 && targetX < 10) targetX = 10;
                                 
-                                // 윙어는 넓게 터치라인으로 벌려서 공간 창출
                                 if (p.baseY < 25) targetY = 10;
                                 else if (p.baseY > 75) targetY = 90;
                                 else targetY = p.baseY;
                             }
 
-                            // 팀원끼리 동선이 겹치면 위아래로 산개
+                            // 겹침 방지 산개
                             state.players.forEach(m => {
                                 if (m.team === p.team && m.id !== p.id && getDistance(targetX, targetY, m.x, m.y) < 8) {
                                     targetY += (targetY > 50) ? -10 : 10;
@@ -470,7 +464,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 targetY = isNaN(targetY) ? p.baseY : Math.max(5, Math.min(95, targetY));
                 
                 let moveSpeed = ((p.stats && p.stats.spd ? p.stats.spd : 80) / 100); 
-                if (isPressing || state.passTargetId === p.id) moveSpeed *= 1.4; // 공 쫓을 땐 전력 질주
+                if (isPressing || state.passTargetId === p.id) moveSpeed *= 1.4; 
                 else moveSpeed *= 0.95; 
                 
                 let distToTarget = getDistance(p.x, p.y, targetX, targetY) || 1;
@@ -482,20 +476,39 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 }
             });
 
-            // --- 6. 터치 및 온더볼(패스/드리블) 지능 ---
+            // --- 5. 터치 및 온더볼(패스/드리블) 지능 ---
             state.players.forEach(p => {
                 let touchRadius = p.role === 'GK' ? 3.0 : 2.5; 
                 let distToBallAct = getDistance(p.x, p.y, state.ball.x, state.ball.y);
                 let isBallInAir = (state.ball.airTicks && state.ball.airTicks > 0);
                 let dir = (p.team === 1) ? 1 : -1;
 
-                // 쿨타임(cooldown)이 0 이하일 때만 터치 가능 (띡띡 끊김 해결)
                 if (!isBallInAir && distToBallAct < touchRadius && p.cooldown <= 0 && state.phase === 'play') {
                     state.lastTouchTeam = p.team;
                     state.passTargetId = null; 
 
                     let targetGoalX = (p.team === 1) ? 100 : 0;
                     let distToGoal = getDistance(p.x, p.y, targetGoalX, 50);
+
+                    // ★ [핵심 버그 수정] 누락되었던 킥오프 종료(해제) 및 첫 패스 로직 복구
+                    if (state.isKickoff) {
+                        if (p.team === state.kickoffTeam) {
+                            let teammates = state.players.filter(m => m.team === p.team && m.role !== 'GK' && m.id !== p.id && getDistance(m.x, m.y, state.ball.x, state.ball.y) > 3);
+                            let behind = teammates.filter(m => (p.team === 1 ? m.x < state.ball.x - 2 : m.x > state.ball.x + 2));
+                            let targetMate = behind.length > 0 ? behind[Math.floor(Math.random() * behind.length)] : teammates[0];
+                            if (targetMate) {
+                                let d = getDistance(p.x, p.y, targetMate.x, targetMate.y) || 1;
+                                state.ball.vx = ((targetMate.x - p.x) / d) * 3.5; 
+                                state.ball.vy = ((targetMate.y - p.y) / d) * 3.5;
+                                state.passTargetId = targetMate.id; 
+                                io.to(roomCode).emit('playSound', 'kick'); 
+                                p.cooldown = 12; 
+                                state.isKickoff = false; // 여기서 킥오프가 정상적으로 해제됩니다!
+                                return; 
+                            }
+                        }
+                        state.isKickoff = false; 
+                    }
 
                     if (p.role === 'GK') {
                         let isInBox = Math.abs(p.x - (p.team === 1 ? 0 : 100)) < 20 && p.y > 20 && p.y < 80;
@@ -527,14 +540,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     state.players.forEach(m => {
                         if (m.team === p.team && m.id !== p.id && m.role !== 'GK') {
                             let dist = getDistance(p.x, p.y, m.x, m.y);
-                            
-                            // 너무 가깝거나 먼 대상은 패스 옵션에서 제외
                             if (dist < 5 || dist > 60) return; 
 
                             let forwardDist = (p.team === 1) ? (m.x - p.x) : (p.x - m.x); 
-                            
                             let laneBlocked = false;
                             let minEnemyDistToM = Infinity;
+                            
                             state.players.forEach(e => {
                                 if (e.team !== p.team) {
                                     if (pDistance(e.x, e.y, p.x, p.y, m.x, m.y) < 3.5) laneBlocked = true;
@@ -546,16 +557,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let score = 0;
                             let actionType = "short"; 
                             
-                            // ★ 전진 패스를 압도적으로 선호하도록 점수 대폭 부여
                             if (forwardDist > 0) score += (forwardDist * 4);
-                            else score -= 100; // 백패스는 최후의 수단으로 전락
+                            else score -= 100; 
                             
                             score += (minEnemyDistToM * 2);
-
-                            // 패스 차단 경로 페널티
                             if (laneBlocked) score -= 500;
 
-                            // 윙어 활용 및 컷백 연계
                             let isDeepWing = (p.team === 1 && p.x > 75) || (p.team === 2 && p.x < 25);
                             if (isDeepWing && (p.y < 25 || p.y > 75)) {
                                 if (Math.abs(m.y - 50) < 20 && forwardDist > -10 && !laneBlocked) {
@@ -570,7 +577,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 }
                             }
 
-                            // 롱킥 엄격한 통제: 먼 반대편이고 공간이 확실할 때만 시도
                             if (dist > 35 && Math.abs(p.y - m.y) > 40 && minEnemyDistToM > 15 && enemiesNear <= 1) {
                                 score += 200; 
                                 actionType = "switch";
@@ -585,15 +591,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     passOptions.sort((a, b) => b.score - a.score);
                     let bestOption = passOptions.length > 0 ? passOptions[0] : null;
 
-                    // ★ 부드러운 볼 터치: 강한 패스가 와도 끊기지 않도록 쿨타임 미부여
+                    // 강한 패스(슈팅급)가 왔을 때 끊김 없이 발밑에 붙이는 트래핑 연산
                     let ballSpeedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
                     if (ballSpeedSq > 15) { 
                         state.ball.vx *= 0.2; state.ball.vy *= 0.2;
                         state.ball.x = p.x; state.ball.y = p.y;
-                        return; // 쿨타임 없이 바로 다음 틱으로 넘겨 멈춤(버퍼링) 방지
+                        return; // 여기서 멈춤(cooldown)을 안 주고 틱을 넘겨 매끄럽게 연결됩니다.
                     }
 
-                    // 행동 결정: 좋은 패스가 있을 때
+                    // 행동 결정: 패스가 가능할 때
                     if (bestOption && bestOption.score > 50) {
                         let targetX = bestOption.mate.x; let targetY = bestOption.mate.y;
                         let isThroughPass = false; let isLobbingPass = false;
@@ -627,29 +633,26 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         }
 
                         state.passTargetId = bestOption.mate.id; 
-                        p.cooldown = 6; // 패스 후 강직 대폭 감소
+                        p.cooldown = 6; 
                     } 
+                    // 행동 결정: 마땅한 패스처가 없으면 빈 공간으로 드리블 돌파
                     else {
-                        // 행동 결정: 마땅한 패스처가 없으면 빈 공간으로 드리블 돌파
                         let pSpeed = ((p.stats && p.stats.spd ? p.stats.spd : 80) / 100);
                         let nearestEnemy = state.players.find(e => e.team !== p.team && getDistance(e.x, e.y, p.x, p.y) < 8);
                         
                         if (nearestEnemy) {
-                            // 탈압박: 적을 피해 툭 치고 나감
                             let dx = p.x - nearestEnemy.x; let dy = p.y - nearestEnemy.y;
                             let dist = Math.sqrt(dx*dx + dy*dy) || 1;
                             state.ball.vx = (dx / dist) * 1.5 + (dir * 1.0); 
                             state.ball.vy = (dy / dist) * 1.5;
                             state.eventText = "탈압박 드리블!";
                         } else {
-                            // 전진 드리블: 거침없이 상대 골대를 향해 돌파
                             let centerDriveVy = (50 - p.y) * 0.05;
                             state.ball.vx = dir * pSpeed * 1.8; 
                             state.ball.vy = centerDriveVy;
                             state.eventText = "공간 돌파!";
                         }
                         
-                        // ★ 드리블 시 쿨타임을 1(100ms)로 주어 끊김 현상 완벽 제거
                         p.cooldown = 1; 
                     }
                 }
