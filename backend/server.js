@@ -342,17 +342,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 }
             }
 
-            // --- 3. 소유권 계산 ---
+            // --- 3. 소유권 계산 및 거리 배열 셋업 ---
+            // (배포 에러 원인이었던 변수 중복 선언 완전 해결)
             let distArr1 = [], distArr2 = [];
             state.players.forEach(p => {
-                let dist = getDistance(p.x, p.y, state.ball.x, state.ball.y);
-                let strayDist = getDistance(p.x, p.y, p.baseX, p.baseY) || 0;
-                let pressScore = dist;
-                
-                if (strayDist > 15) pressScore += (strayDist - 15) * 2; 
-                if (strayDist > 25) pressScore += 500; 
-
-                if(p.role !== 'GK') { if (p.team === 1) distArr1.push({p, dist, pressScore, strayDist}); else distArr2.push({p, dist, pressScore, strayDist}); }
+                if (p.role !== 'GK') {
+                    let dist = getDistance(p.x, p.y, state.ball.x, state.ball.y);
+                    if (p.team === 1) distArr1.push({p, dist}); 
+                    else distArr2.push({p, dist});
+                }
             });
             
             let minDist1 = distArr1.length > 0 ? Math.min(...distArr1.map(o => o.dist)) : Infinity;
@@ -361,20 +359,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             if(minDist1 < minDist2 && minDist1 < 10) state.possessionTeam = 1;
             else if(minDist2 <= minDist1 && minDist2 < 10) state.possessionTeam = 2;
             
-            const attTeam = state.possessionTeam;
+            let attTeam = state.possessionTeam;
 
             // --- 4. 밸런스형 전술 오프더볼 AI (동네축구 방지 및 진형 유지) ---
-            let attTeam = state.possessionTeam;
             let ballCarrier = state.players.find(p => p.team === attTeam && getDistance(p.x, p.y, state.ball.x, state.ball.y) < 4);
 
-            let distArr1 = [], distArr2 = [];
-            state.players.forEach(p => {
-                if (p.role !== 'GK') {
-                    let d = getDistance(p.x, p.y, state.ball.x, state.ball.y);
-                    if (p.team === 1) distArr1.push({ p: p, dist: d });
-                    else distArr2.push({ p: p, dist: d });
-                }
-            });
+            // 오프더볼 연산을 위해 거리순 정렬 재사용 (중복 연산 및 렉 제거)
             distArr1.sort((a,b) => a.dist - b.dist);
             distArr2.sort((a,b) => a.dist - b.dist);
 
@@ -414,9 +404,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     let rank = rankObj ? myDistArr.indexOf(rankObj) : 999;
                     let distToBall = rankObj ? rankObj.dist : 999;
 
-                    // 🛡️ [수비 AI] 지역 방어 및 대형 유지 (동네축구 완벽 차단)
+                    // 🛡️ [수비 AI] 지역 방어 및 대형 유지
                     if (attTeam !== p.team && p.role !== 'GK') {
-                        // 공이 있는 방향으로 블록이 쏠리되, 자기 라인(baseY)을 지킴
                         let shiftY = (state.ball.y - 50) * 0.35; 
                         let blockY = p.baseY + shiftY;
                         
@@ -425,7 +414,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         else if (p.role === 'MF') blockX = Math.max(25, Math.min(75, state.ball.x - (dir * 18)));
                         else if (p.role === 'DF') blockX = Math.max(10, Math.min(90, state.ball.x - (dir * 28)));
 
-                        // 가장 가까운 1~2명만 압박, 나머지는 대형 유지
                         if (rank === 0 && distToBall < 18) { 
                             targetX = state.ball.x; targetY = state.ball.y; isPressing = true; 
                         } 
@@ -445,16 +433,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             targetX = (p.team===1?12:88); targetY = 50; 
                         }
                         else if (ballCarrier && p.id === ballCarrier.id) {
-                            targetX = state.ball.x + (dir * 6); targetY = state.ball.y; // 드리블러는 전진
+                            targetX = state.ball.x + (dir * 6); targetY = state.ball.y;
                         }
                         else {
                             let teamAdvance = (p.team === 1) ? Math.max(0, state.ball.x - 30) : Math.max(0, 70 - state.ball.x);
                             targetX = p.baseX + (dir * teamAdvance * 0.7);
-                            targetY = p.baseY; // 기본적으로 자기 좌우 위치(Lane) 고수
+                            targetY = p.baseY; 
 
                             let inFinalThird = (p.team === 1 && state.ball.x > 65) || (p.team === 2 && state.ball.x < 35);
                             
-                            // 공격 지역 진입 시 유기적 침투
                             if (inFinalThird) {
                                 if (p.role === 'FW') {
                                     targetX = targetGoalX - (dir * 10); 
@@ -466,7 +453,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     targetY = p.baseY; 
                                 }
                             } 
-                            // 빌드업 시 패스길 창출 (삼각형 대형)
                             else {
                                 if (p.role === 'FW') {
                                     let offsideLine = (p.team === 1) ? defLine2 : defLine1;
@@ -484,7 +470,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
                 }
 
-                // 강력한 선수 겹침(비비기) 방지 장치
+                // 겹침 방지 밀어내기 효과
                 state.players.forEach(other => {
                     if (other !== p && other.role !== 'GK') {
                         let d = getDistance(p.x, p.y, other.x, other.y) || 1;
@@ -570,7 +556,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     state.players.forEach(m => {
                         if (m.team === p.team && m.id !== p.id && m.role !== 'GK') {
                             let dist = getDistance(p.x, p.y, m.x, m.y);
-                            if (dist < 8 || dist > 50) return; // 패스 거리 제한 (너무 가깝거나 냅다 지르는 롱킥 제외)
+                            if (dist < 8 || dist > 50) return; 
 
                             let forwardDist = (p.team === 1) ? (m.x - p.x) : (p.x - m.x); 
                             let laneBlocked = false;
@@ -588,11 +574,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             
                             if (laneBlocked) score -= 1500; 
 
-                            score += (forwardDist * 4); // 전진 패스 우대
-                            score -= (dist * 0.5); // 거리가 멀수록 정확도 리스크 반영
-                            score += (minEnemyDistToM * 3); // 주변이 비어있는 동료 선호
+                            score += (forwardDist * 4); 
+                            score -= (dist * 0.5); 
+                            score += (minEnemyDistToM * 3); 
 
-                            // 스루패스 (침투하는 동료에게만)
                             if (m.isMakingRun && forwardDist > 0 && minEnemyDistToM > 6 && !laneBlocked) {
                                 score += 500; isThrough = true;
                             }
@@ -604,22 +589,18 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     passOptions.sort((a, b) => b.score - a.score);
                     let bestOption = passOptions.length > 0 ? passOptions[0] : null;
 
-                    // 빠른 공 트래핑
                     let ballSpeedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
                     if (ballSpeedSq > 15) { 
                         state.ball.vx *= 0.2; state.ball.vy *= 0.2; state.ball.x = p.x; state.ball.y = p.y; p.cooldown = 0; return; 
                     }
 
-                    // 액션 실행
                     if (bestOption && bestOption.score > 20) {
                         let targetX = bestOption.mate.x; let targetY = bestOption.mate.y;
                         
-                        // ★ 목적지 정상화: 허공에 지르지 않고 동료 앞 4 유닛 발밑으로 배달
                         if (bestOption.isThrough) targetX += dir * 4; 
 
                         io.to(roomCode).emit('playSound', 'kick');
                         
-                        // ★ 패스 속도 정상화: 로켓 패스를 막기 위해 최대 속도(5.0) 제한
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
                         let power = Math.max(2.5, Math.min(d / 6.0, 5.0)); 
 
@@ -633,7 +614,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         p.cooldown = 8; 
                     } 
                     else {
-                        // 패스할 곳이 없으면 드리블
                         let pSpeed = ((p.stats && p.stats.spd ? p.stats.spd : 80) / 100);
                         let nearestEnemy = state.players.find(e => e.team !== p.team && getDistance(e.x, e.y, p.x, p.y) < 8);
                         
