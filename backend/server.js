@@ -596,18 +596,22 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let inAttackingHalf = (p.team === leftTeam && state.ball.x > 50) || (p.team === rightTeam && state.ball.x < 50);
                             let offsideLine = (p.team === leftTeam) ? defLineRight : defLineLeft;
 
-                            // 1. 센터백 (CB): 팀이 하프라인을 넘으면 센터백도 라인을 55~60 부근까지 올려 상대를 가둬놓고 공격함
                             if (p.posId === 'CB') {
                                 let maxPushX = (p.team === leftTeam) ? (inAttackingHalf ? 55 : 46) : (inAttackingHalf ? 45 : 54); 
                                 let cbTargetX = (p.team === leftTeam) ? Math.min(maxPushX, state.ball.x - 20) : Math.max(maxPushX, state.ball.x + 20);
                                 targetX = p.baseX + (dir * Math.max(0, (p.team === leftTeam ? cbTargetX - p.baseX : p.baseX - cbTargetX)));
                                 targetY = p.baseY + organicY;
                             }
-                            // 2. 풀백 (LB/RB): 공격 진영 진입 시 더 높은 위치로 스프린트 오버랩
                             else if (p.posId === 'LB' || p.posId === 'RB') {
                                 if (inAttackingHalf) {
-                                    targetX = targetGoalX - (dir * 20); 
-                                    targetY = p.baseY + (p.posId === 'LB' ? -6 : 6); 
+                                    // [핵심 개선] 공격 시 풀백이 공보다 훨씬 앞쪽까지 폭발적으로 오버랩
+                                    targetX = state.ball.x + (dir * 20); 
+                                    let goalLine = (p.team === leftTeam) ? 95 : 5;
+                                    if (dir === 1 && targetX > goalLine) targetX = goalLine;
+                                    if (dir === -1 && targetX < goalLine) targetX = goalLine;
+                                    
+                                    targetY = p.baseY + (p.posId === 'LB' ? -10 : 10); 
+                                    targetY = Math.max(5, Math.min(95, targetY));
                                     p.isMakingRun = true;
                                 } else {
                                     let fbAdvance = (p.team === leftTeam) ? state.ball.x - 5 : state.ball.x + 5;
@@ -615,25 +619,25 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     targetY = p.baseY + organicY;
                                 }
                             }
-                            // 3. 미드필더 (MF): 박스 안으로 더 적극적인 쇄도
                             else if (p.role === 'MF') {
                                 let isDM = p.posId.includes('DM');
                                 let isAM = p.posId.includes('AM');
+                                let isWing = p.posId.includes('LM') || p.posId.includes('RM') || p.posId.includes('LW') || p.posId.includes('RW');
 
                                 if (isDM) {
+                                    // [핵심 개선] 수비형 미드필더도 공격 시 하프라인을 뚫고 올라와 2선 공격을 지원
                                     let dmAdvance = (p.team === leftTeam) ? state.ball.x - 12 : state.ball.x + 12;
-                                    targetX = p.baseX + (dir * Math.max(0, (p.team === leftTeam ? dmAdvance - p.baseX : p.baseX - dmAdvance) * 0.8));
+                                    targetX = inAttackingHalf ? state.ball.x - (dir * 12) : p.baseX + (dir * Math.max(0, (p.team === leftTeam ? dmAdvance - p.baseX : p.baseX - dmAdvance) * 0.8));
                                     targetY = p.baseY + organicY;
                                 } else {
-                                    let spaceX = state.ball.x + (dir * 10); 
-                                    let spaceY = p.baseY + (state.ball.y - p.baseY) * 0.35;
-                                    
-                                    // 공격 진영에서는 침투 빈도를 60%로 상향
-                                    if (inAttackingHalf && (isAM || Math.random() < 0.6)) {
-                                        targetX = targetGoalX - (dir * 14);
+                                    // [핵심 개선] CM, AM, 측면 미드필더들이 득점을 위해 박스 근처로 적극 침투
+                                    if (inAttackingHalf) {
+                                        targetX = targetGoalX - (dir * (isWing ? 8 : 15));
                                         targetY = p.baseY + (Math.random() - 0.5) * 15;
                                         p.isMakingRun = true;
                                     } else {
+                                        let spaceX = state.ball.x + (dir * 10); 
+                                        let spaceY = p.baseY + (state.ball.y - p.baseY) * 0.35;
                                         let bestY = spaceY;
                                         let maxFoundSpace = -Infinity;
                                         [-12, 0, 12].forEach(offset => {
@@ -656,7 +660,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     }
                                 }
                             }
-                            // 4. 공격수 (FW): 상대 박스 근처를 더 직접적으로 타격
                             else if (p.role === 'FW') {
                                 if (inAttackingHalf) {
                                     let nearestDef = state.players
@@ -664,14 +667,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                         .reduce((prev, curr) => (getDistance(p.x, p.y, curr.x, curr.y) < getDistance(p.x, p.y, prev.x, prev.y) ? curr : prev), state.players[0]);
 
                                     if (nearestDef && getDistance(p.x, p.y, nearestDef.x, nearestDef.y) < 6.5) {
-                                        let pullX = (p.x > nearestDef.x) ? 1.5 : -1.5;
-                                        let pullY = (p.y > nearestDef.y) ? 1.5 : -1.5;
-                                        targetX = p.x + pullX * 5;
-                                        targetY = p.y + pullY * 5;
+                                        let pullX = (p.x > nearestDef.x) ? 1.8 : -1.8;
+                                        let pullY = (p.y > nearestDef.y) ? 1.8 : -1.8;
+                                        targetX = p.x + pullX * 6; // 수비수 반대편으로 더 크게 돌아 뜀
+                                        targetY = p.y + pullY * 6;
                                         p.isMakingRun = true;
                                     } else {
-                                        targetX = targetGoalX - (dir * (4 + Math.random() * 5)); 
-                                        targetY = p.baseY + (Math.random() - 0.5) * 15;
+                                        targetX = targetGoalX - (dir * 4); // 페널티 박스 깊숙이 진입
+                                        targetY = 50 + (Math.random() - 0.5) * 20; 
                                         p.isMakingRun = true;
                                     }
                                     
@@ -951,21 +954,39 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let nearestEnemy = state.players.find(e => e.team !== p.team && getDistance(e.x, e.y, p.x, p.y) < 8);
                         
                         if (nearestEnemy) {
-                            // [결정적 변화 3] 수비 진영에서 고립되었는데 패스할 데도 없으면 뒤로 물러나지 않고 앞쪽 공간으로 강하게 걷어냄
-                            if (inOwnHalf) {
+                            let dx = p.x - nearestEnemy.x; 
+                            let dy = p.y - nearestEnemy.y; 
+                            let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                            
+                            // [핵심 개선] 적이 내 진로(정면)를 막고 있는지 기하학적으로 판별
+                            let enemyInFront = (dir === 1 && nearestEnemy.x > p.x) || (dir === -1 && nearestEnemy.x < p.x);
+                            
+                            // [핵심 개선] 걷어내기 발동 조건 엄격화 (자신 진영의 수비 서드에서 패스할 곳이 없을 때만 걷어냄)
+                            let inDefensiveThird = (p.team === leftTeam && state.ball.x < 35) || (p.team === rightTeam && state.ball.x > 65);
+                            
+                            if (inDefensiveThird && dist < 6 && (!bestOption || bestOption.score < 30)) {
                                 state.ball.vx = dir * 6.5; 
                                 state.ball.vy = (Math.random() - 0.5) * 5.0; 
                                 state.ball.airTicks = 4;
                                 state.eventText = "💥 전방 걷어내기!";
                                 p.cooldown = 6; 
                             } else {
-                                let dx = p.x - nearestEnemy.x; 
-                                let dy = p.y - nearestEnemy.y; 
-                                let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                                // [핵심 개선] 수비수를 향해 정면으로 차지 않고 피하는(탈압박) 물리 연산
+                                let evadeX = dx / dist;
+                                let evadeY = dy / dist;
                                 
-                                state.ball.vx = (dx / dist) * 1.5 + (dir * 2.0); 
-                                state.ball.vy = (dy / dist) * 1.5; 
-                                state.eventText = "⚡ 탈압박 드리블!";
+                                if (enemyInFront) {
+                                    // 적이 앞에 있으면 Y축(측면)으로 넓게 꺾어 치는 드리블 구사
+                                    let sideDir = (p.y > 50) ? -1 : 1; 
+                                    state.ball.vx = (evadeX * 1.2) + (dir * 0.8); 
+                                    state.ball.vy = (evadeY * 1.5) + (sideDir * 3.5); // 강력한 측면 터치
+                                    state.eventText = "⚡ 측면 돌파!";
+                                } else {
+                                    // 적이 옆/뒤에 붙어있으면 전방 공간으로 빠르게 달아남
+                                    state.ball.vx = (evadeX * 1.0) + (dir * 3.0); 
+                                    state.ball.vy = evadeY * 1.0; 
+                                    state.eventText = "⚡ 전진 탈압박!";
+                                }
                                 p.cooldown = 4; 
                             }
                         } else {
