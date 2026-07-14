@@ -15,7 +15,7 @@
         .draft-pitch { width: 400px; height: 600px; background: #20bf6b; border: 3px solid white; position: relative; margin-top: 20px; border-radius: 10px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);}
         
         /* 매치 화면에서의 선수 크기 (작게) */
-        .player-node { width: 18px; height: 18px; border-radius: 50%; background: #eb3b5a; border: 1.5px solid white; position: absolute; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; box-shadow: 5 2px 4px rgba(0,0,0,0.3); z-index: 5; user-select: none; letter-spacing: -0.5px; }
+        .player-node { will-change: left, top; width: 18px; height: 18px; border-radius: 50%; background: #eb3b5a; border: 1.5px solid white; position: absolute; transform: translate(-50%, -50%); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.4); z-index: 5; user-select: none; letter-spacing: -0.5px; }
         
         /* ★ 드래프트 화면에서의 선수 크기 (크게 복구) */
         #draft-pitch .player-node { width: 35px; height: 35px; font-size: 10px; }
@@ -211,7 +211,7 @@
 
             const ballEl = document.createElement('div');
             ballEl.id = 'match-ball';
-            ballEl.style.cssText = `width: 10px; height: 10px; background: white; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 1.5px solid black;`;
+            ballEl.style.cssText = `will-change: left, top; width: 10px; height: 10px; background: white; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 1.5px solid black;`;
             pitch.appendChild(ballEl);
 
             matchState.players.forEach(player => {
