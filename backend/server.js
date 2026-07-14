@@ -421,7 +421,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
                     state.phase = 'play'; state.gkHolder = null; state.throwerId = null; state.kickerId = null;
                 }
-                if (state.phase !== 'play' && state.phase !== 'gk_hold') { emitUpdate(roomCode, state); return; }
             }
 
             // --- 2. 물리 연산 ---
@@ -456,9 +455,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             
             let minDist1 = distArr1.length > 0 ? Math.min(...distArr1.map(o => o.dist)) : Infinity;
             let minDist2 = distArr2.length > 0 ? Math.min(...distArr2.map(o => o.dist)) : Infinity;
-
-            if(minDist1 < minDist2 && minDist1 < 8) state.possessionTeam = 1;
-            else if(minDist2 <= minDist1 && minDist2 < 8) state.possessionTeam = 2;
+            // ★ 인플레이 상황에서만 거리 기반으로 소유권 실시간 판정 (세트피스 시 소유권 고정)
+            if (state.phase === 'play') {
+                if(minDist1 < minDist2 && minDist1 < 8) state.possessionTeam = 1;
+                else if(minDist2 <= minDist1 && minDist2 < 8) state.possessionTeam = 2;
+            }
             
             let attTeam = state.possessionTeam;
             let isLooseBall = (minDist1 > 6 && minDist2 > 6);
@@ -528,18 +529,43 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             targetX = myGoalX + (defDir * (2 + (idx % 3) * 4)); targetY = 28 + (idx * 5) % 44;
                         }
                     } 
-                    // [개선 4] 골킥
+                    // ★ 골킥 전술 준비 상황 포지셔닝
                     else if (state.phase === 'goal_kick') {
                         let kickDir = (state.possessionTeam === leftTeam) ? 1 : -1;
                         if (p.team === state.possessionTeam) {
-                            if (p.role === 'FW') { targetX = 50 + (kickDir * 15) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 + (kickDir * 5) + organicX; targetY = p.baseY; }
-                            else { targetX = (p.team === leftTeam) ? 20 : 80; targetY = p.baseY; }
+                            // 공격하는 팀 (골킥 차는 팀)
+                            if (p.role === 'FW') { 
+                                // 공격수: 하프라인 너머 상대 진영 깊숙이 배치 (공격 전개 대비)
+                                targetX = 50 + (kickDir * 18) + organicX; 
+                                targetY = p.baseY; 
+                            }
+                            else if (p.role === 'MF') { 
+                                // 미드필더: 하프라인 근처에 올라가 세컨볼 싸움 준비
+                                targetX = 50 + (kickDir * 8) + organicX; 
+                                targetY = p.baseY; 
+                            }
+                            else { 
+                                // 빌드업 수비진: 골키퍼 롱킥을 등지고 페널티 박스 외곽에서 벌려 대기
+                                targetX = (p.team === leftTeam) ? 22 : 78; 
+                                targetY = p.baseY; 
+                            }
                         } else {
-                            // 수비팀도 같이 라인을 올려서 대치함
-                            if (p.role === 'FW') { targetX = 50 - (kickDir * 5) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 - (kickDir * 15) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'DF') { targetX = 50 - (kickDir * 25) + organicX; targetY = p.baseY; }
+                            // 수비하는 팀 (골킥 막는 팀)
+                            if (p.role === 'FW') { 
+                                // 공격수: 하프라인 선상에서 상대 빌드업을 견제
+                                targetX = 50 - (kickDir * 5) + organicX; 
+                                targetY = p.baseY; 
+                            }
+                            else if (p.role === 'MF') { 
+                                // 미드필더: 하프라인 바로 뒤쪽에 밀집 대형 형성
+                                targetX = 50 - (kickDir * 12) + organicX; 
+                                targetY = p.baseY; 
+                            }
+                            else if (p.role === 'DF') { 
+                                // 수비수: 롱볼 헤더 컷팅을 위해 수비 라인을 탄탄하게 뒤로 내림
+                                targetX = 50 - (kickDir * 25) + organicX; 
+                                targetY = p.baseY; 
+                            }
                         }
                     }
                     else {
@@ -713,86 +739,72 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 }
 
                 // ★ 물리 태클 경합 엔진 (쿨다운 및 충돌반경 개선)
-                state.players.forEach(other => {
-                    if (other !== p && other.role !== 'GK') {
-                        let dx = p.x - other.x; let dy = p.y - other.y;
-                        let d = Math.sqrt(dx*dx + dy*dy) || 1;
-                        
-                        if (d < 1.2) { 
-                            let repelForce = (d < 0.5) ? 0.8 : 0.1;
+                if (state.phase === 'play') {
+                    state.players.forEach(other => {
+                        if (other !== p && other.role !== 'GK') {
+                            let dx = p.x - other.x; let dy = p.y - other.y;
+                            let d = Math.sqrt(dx*dx + dy*dy) || 1;
+                            
+                            if (d < 1.2) { 
+                                let repelForce = (d < 0.5) ? 0.8 : 0.1;
 
-                            if (p.team === other.team) {
-                                let repel = (1.2 - d) * repelForce;
-                                targetX += (dx / d) * repel; targetY += (dy / d) * repel;
-                            } else {
-                                if (p.duelCooldown <= 0 && other.duelCooldown <= 0 && state.phase === 'play') {
-                                    let pHasBall = (ballCarrier && ballCarrier.id === p.id);
-                                    let otherHasBall = (ballCarrier && ballCarrier.id === other.id);
+                                if (p.team === other.team) {
+                                    let repel = (1.2 - d) * repelForce;
+                                    targetX += (dx / d) * repel; targetY += (dy / d) * repel;
+                                } else {
+                                    if (p.duelCooldown <= 0 && other.duelCooldown <= 0) {
+                                        let pHasBall = (ballCarrier && ballCarrier.id === p.id);
+                                        let otherHasBall = (ballCarrier && ballCarrier.id === other.id);
 
-                                    if (pHasBall || otherHasBall) {
-                                        // ★ 연속 무한 비비기 방지: 경합 후 2.5초(25틱) 동안 서로 재충돌 무시
-                                        p.duelCooldown = 25; 
-                                        other.duelCooldown = 25;
-                                        
-                                        let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
-                                        let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
-                                        
-                                        let pScore = pSpeed + (Math.random() * 30);
-                                        let oScore = oSpeed + (Math.random() * 30);
-
-                                        if (Math.random() < 0.20 || (oScore > pScore + 10 && !pHasBall)) {
-                                            state.ball.vx = (Math.random() - 0.5) * 5; 
-                                            state.ball.vy = (Math.random() - 0.5) * 5;
-                                            state.eventText = "⚔️ 태클 탈취 턴오버!";
-                                            state.possessionTeam = 0; 
-                                            state.passTargetId = null; 
+                                        if (pHasBall || otherHasBall) {
+                                            p.duelCooldown = 25; 
+                                            other.duelCooldown = 25;
                                             
-                                            if (pHasBall) { 
-                                                p.cooldown = 5; p.stunTicks = 15; // 공격수가 뺏기면 밸런스를 잃음
-                                                p.x -= (dx / d) * 2.5; p.y -= (dy / d) * 2.5; // 살짝 튕겨남
-                                            } else { 
-                                                other.cooldown = 5; other.stunTicks = 15; 
-                                                other.x += (dx / d) * 2.5; other.y += (dy / d) * 2.5;
-                                            }
-                                        } else {
-                                            if (pScore > oScore) {
-                                                other.cooldown = 5; 
-                                                other.stunTicks = 15; // 수비수 밸런스 잃음
-                                                other.x += (dx / d) * 2.5; // 수비수 튕겨나감
-                                                other.y += (dy / d) * 2.5;
-                                                state.eventText = "⚡ 벗겨냅니다!";
+                                            let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
+                                            let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
+                                            
+                                            let pScore = pSpeed + (Math.random() * 30);
+                                            let oScore = oSpeed + (Math.random() * 30);
+
+                                            if (Math.random() < 0.20 || (oScore > pScore + 10 && !pHasBall)) {
+                                                state.ball.vx = (Math.random() - 0.5) * 5; 
+                                                state.ball.vy = (Math.random() - 0.5) * 5;
+                                                state.eventText = "⚔️ 태클 탈취 턴오버!";
+                                                state.possessionTeam = 0; 
+                                                state.passTargetId = null; 
+                                                
+                                                if (pHasBall) { 
+                                                    p.cooldown = 5; p.stunTicks = 15; 
+                                                    p.x -= (dx / d) * 2.5; p.y -= (dy / d) * 2.5; 
+                                                } else { 
+                                                    other.cooldown = 5; other.stunTicks = 15; 
+                                                    other.x += (dx / d) * 2.5; other.y += (dy / d) * 2.5;
+                                                }
                                             } else {
-                                                p.cooldown = 5; 
-                                                p.stunTicks = 10; // 공격수 저지당함
-                                                p.x -= (dx / d) * 2.0; p.y -= (dy / d) * 2.0;
-                                                state.eventText = "🧱 수비벽 지연!";
-                                                state.ball.vx *= 0.5; state.ball.vy *= 0.5;
+                                                if (pScore > oScore) {
+                                                    other.cooldown = 5; 
+                                                    other.stunTicks = 15; 
+                                                    other.x += (dx / d) * 2.5; 
+                                                    other.y += (dy / d) * 2.5;
+                                                    state.eventText = "⚡ 벗겨냅니다!";
+                                                } else {
+                                                    p.cooldown = 5; 
+                                                    p.stunTicks = 10; 
+                                                    p.x -= (dx / d) * 2.0; p.y -= (dy / d) * 2.0;
+                                                    state.eventText = "🧱 수비벽 지연!";
+                                                    state.ball.vx *= 0.5; state.ball.vy *= 0.5;
+                                                }
                                             }
                                         }
                                     } else {
-                                        // 공 없는 선수들끼리의 경합
-                                        let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
-                                        let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
-                                        let pScore = pSpeed + (Math.random() * 20);
-                                        let oScore = oSpeed + (Math.random() * 20);
-
-                                        if (pScore > oScore) {
-                                            other.cooldown = 4; 
-                                        } else {
-                                            p.cooldown = 4;
-                                            let repel = (1.2 - d) * 0.2;
-                                            targetX += (dx / d) * repel; targetY += (dy / d) * repel;
-                                        }
+                                        let repel = (1.2 - d) * repelForce;
+                                        targetX += (dx / d) * repel; targetY += (dy / d) * repel;
                                     }
-                                } else {
-                                    // 쿨타임 중이더라도 적과 겹치면 물리적으로 밀어내기
-                                    let repel = (1.2 - d) * repelForce;
-                                    targetX += (dx / d) * repel; targetY += (dy / d) * repel;
                                 }
                             }
                         }
-                    }
-                });
+                    });
+                }
 
                 targetX = isNaN(targetX) ? p.baseX : Math.max(2, Math.min(98, targetX)); 
                 targetY = isNaN(targetY) ? p.baseY : Math.max(2, Math.min(98, targetY));
