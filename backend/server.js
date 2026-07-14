@@ -324,6 +324,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if (isNaN(p.x) || isNaN(p.y)) { p.x = p.baseX; p.y = p.baseY; }
                 if (isNaN(p.cooldown)) p.cooldown = 0;
                 if (isNaN(p.duelCooldown)) p.duelCooldown = 0;
+                if (isNaN(p.stunTicks)) p.stunTicks = 0;
             });
 
             // --- 1. 세트피스 처리 ---
@@ -403,24 +404,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             state.eventText = "🎯 코너킥 크로스!";
                         } 
                         else if (state.phase === 'goal_kick') {
-                        let kickDir = (state.possessionTeam === leftTeam) ? 1 : -1;
-                        if (p.team === state.possessionTeam) {
-                            // 차는 팀: 공격수는 상대 진영 깊숙이, 미드필더는 하프라인 너머로 전진
-                            if (p.role === 'FW') { targetX = 50 + (kickDir * 28) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 + (kickDir * 12) + organicX; targetY = p.baseY; }
-                            else { targetX = (p.team === leftTeam) ? 20 : 80; targetY = p.baseY; }
-                        } else {
-                            // 수비 팀: 롱킥을 막기 위해 같이 라인을 내림
-                            if (p.role === 'DF') { targetX = 50 + (kickDir * 25) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 + (kickDir * 12) + organicX; targetY = p.baseY; }
-                            else { targetX = 50 - (kickDir * 5) + organicX; targetY = p.baseY; }
+                            let kickDir = (state.possessionTeam === leftTeam) ? 1 : -1;
+                            state.ball.vx = kickDir * 7.5; 
+                            state.ball.vy = (Math.random() - 0.5) * 4.0; 
+                            state.ball.airTicks = 6;
+                            state.eventText = "👟 골킥 롱패스!";
                         }
-                    }
-                    else {
-                        targetX = (p.team === leftTeam) ? p.baseX * 0.8 : 100 - ((100 - p.baseX) * 0.8); 
-                        targetY = p.baseY; 
-                    }
-                }
                         else if (state.phase === 'free_kick') {
                             let targetX = state.ball.x + dir * 35;
                             let targetY = 50 + (Math.random() - 0.5) * 30;
@@ -579,27 +568,26 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         targetY = Math.max(30, Math.min(70, targetY));
                     }
                     else if (attTeam !== p.team) {
-                        // ★ 수비 시 공의 위치에 따라 전체 라인이 공 쪽으로 쏠림 (지역 방어)
+                        // ★ 공이 떠있을 때는 낙하 예상 지점(refBallX)을 수비 라인의 기준으로 삼음
+                        let refBallX = state.ball.airTicks > 0 ? state.ball.x + (state.ball.vx * state.ball.airTicks) : state.ball.x;
                         let shiftY = (state.ball.y - 50) * 0.4; 
                         
-                        // ★ [핵심 개선 1] 센터백과 풀백이 중앙으로 간격을 좁혀 골대 앞을 방어 (Pinch In)
                         let pinchFactor = 1.0;
-                        if (p.posId === 'CB') pinchFactor = 0.2; // 센터백은 중앙(50)에 극도로 가깝게 밀집
-                        else if (p.role === 'DF') pinchFactor = 0.6; // 풀백도 중앙으로 좁힘
+                        if (p.posId === 'CB') pinchFactor = 0.2; // 센터백 중앙 밀집
+                        else if (p.role === 'DF') pinchFactor = 0.6; // 풀백 중앙 좁힘
                         else if (p.role === 'MF') pinchFactor = 0.75; 
 
                         let blockY = 50 + (p.baseY - 50) * pinchFactor + shiftY + organicY;
                         
-                        // 자기 골대 근처(페널티 박스 부근)일수록 더 촘촘하게 중앙 밀집
                         let distToOwnGoal = Math.abs(p.x - (p.team === leftTeam ? 0 : 100));
                         if (distToOwnGoal < 25) {
                             blockY = 50 + (blockY - 50) * 0.5;
                         }
 
                         let blockX = p.baseX + organicX;
-                        if (p.role === 'FW') blockX = state.ball.x - (dir * 8);
-                        else if (p.role === 'MF') blockX = Math.max(25, Math.min(75, state.ball.x - (dir * 18)));
-                        else if (p.role === 'DF') blockX = Math.max(10, Math.min(90, state.ball.x - (dir * 28)));
+                        if (p.role === 'FW') blockX = refBallX - (dir * 8);
+                        else if (p.role === 'MF') blockX = Math.max(25, Math.min(75, refBallX - (dir * 18)));
+                        else if (p.role === 'DF') blockX = Math.max(10, Math.min(90, refBallX - (dir * 28)));
 
                         if (isLooseBall && rank === 0) {
                             targetX = pTargetX + (p.id % 3 - 1) * 0.5; 
@@ -617,6 +605,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         }
                     }
                     else if (attTeam === p.team) {
+                        // ★ 공격 시에도 낙하 예상 지점(refBallX)을 기준으로 삼아 롱킥 시 미리 전진하게 만듦
+                        let refBallX = state.ball.airTicks > 0 ? state.ball.x + (state.ball.vx * state.ball.airTicks) : state.ball.x;
                         let isChasingBall = (state.passTargetId === p.id) || (!state.passTargetId && rank === 0 && distToBall < 15) || (isLooseBall && rank === 0);
                         
                         if (isChasingBall) {
@@ -629,61 +619,55 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             targetY = state.ball.y;
                         }
                         else {
-                            let inFinalThird = (p.team === leftTeam && state.ball.x > 65) || (p.team === rightTeam && state.ball.x < 35);
-                            let inAttackingHalf = (p.team === leftTeam && state.ball.x > 50) || (p.team === rightTeam && state.ball.x < 50);
+                            let inFinalThird = (p.team === leftTeam && refBallX > 65) || (p.team === rightTeam && refBallX < 35);
+                            let inAttackingHalf = (p.team === leftTeam && refBallX > 50) || (p.team === rightTeam && refBallX < 50);
                             let offsideLine = (p.team === leftTeam) ? defLineRight : defLineLeft;
 
                             if (p.posId === 'CB') {
                                 let maxPushX = (p.team === leftTeam) ? (inAttackingHalf ? 55 : 46) : (inAttackingHalf ? 45 : 54); 
-                                let cbTargetX = (p.team === leftTeam) ? Math.min(maxPushX, state.ball.x - 20) : Math.max(maxPushX, state.ball.x + 20);
+                                let cbTargetX = (p.team === leftTeam) ? Math.min(maxPushX, refBallX - 20) : Math.max(maxPushX, refBallX + 20);
                                 targetX = p.baseX + (dir * Math.max(0, (p.team === leftTeam ? cbTargetX - p.baseX : p.baseX - cbTargetX)));
-                                // 빌드업 시 중앙을 비우고 좌우로 살짝 벌려서 패스길 창출 (Lateral Movement)
                                 targetY = 50 + (p.baseY - 50) * 1.2 + organicY;
                             }
                             else if (p.posId === 'LB' || p.posId === 'RB') {
                                 if (inAttackingHalf) {
-                                    // 스피드가 빠른(85 이상) 풀백은 훨씬 더 파괴적이고 깊게 오버랩함
                                     let overlapDepth = (p.stats && p.stats.spd > 85) ? 22 : 12;
-                                    targetX = state.ball.x + (dir * overlapDepth); 
+                                    targetX = refBallX + (dir * overlapDepth); 
                                     let goalLine = (p.team === leftTeam) ? 95 : 5;
                                     if (dir === 1 && targetX > goalLine) targetX = goalLine;
                                     if (dir === -1 && targetX < goalLine) targetX = goalLine;
                                     targetY = 50 + (p.baseY - 50) * 0.6; 
                                     p.isMakingRun = true;
                                 } else {
-                                    let fbAdvance = (p.team === leftTeam) ? state.ball.x - 5 : state.ball.x + 5;
+                                    let fbAdvance = (p.team === leftTeam) ? refBallX - 5 : refBallX + 5;
                                     targetX = p.baseX + (dir * Math.max(0, (p.team === leftTeam ? fbAdvance - p.baseX : p.baseX - fbAdvance) * 0.8));
                                     targetY = p.baseY + organicY;
                                 }
                             }
                             else if (p.role === 'MF') {
                                 let isDM = p.posId.includes('DM');
-                                let isAM = p.posId.includes('AM');
                                 let isWing = p.posId.includes('LM') || p.posId.includes('RM') || p.posId.includes('LW') || p.posId.includes('RW');
 
                                 if (isDM) {
-                                    let dmAdvance = (p.team === leftTeam) ? state.ball.x - 12 : state.ball.x + 12;
-                                    targetX = inAttackingHalf ? state.ball.x - (dir * 12) : p.baseX + (dir * Math.max(0, (p.team === leftTeam ? dmAdvance - p.baseX : p.baseX - dmAdvance) * 0.8));
+                                    let dmAdvance = (p.team === leftTeam) ? refBallX - 12 : refBallX + 12;
+                                    targetX = inAttackingHalf ? refBallX - (dir * 12) : p.baseX + (dir * Math.max(0, (p.team === leftTeam ? dmAdvance - p.baseX : p.baseX - dmAdvance) * 0.8));
                                     targetY = p.baseY + organicY;
                                 } else {
                                     if (inAttackingHalf) {
                                         targetX = targetGoalX - (dir * (isWing ? 8 : 15));
-                                        
-                                        // [핵심 개선 2] 윙어들이 직선으로만 뛰지 않고 중앙(하프스페이스/박스 안)으로 파고드는 '컷 인사이드' 움직임
                                         if (isWing) {
-                                            let cutInsideY = 50 + (p.baseY - 50) * 0.3; // 윙어가 박스 안쪽으로 70% 좁혀 들어옴
+                                            let cutInsideY = 50 + (p.baseY - 50) * 0.3; 
                                             targetY = cutInsideY + organicY;
                                         } else {
-                                            targetY = p.baseY + (Math.random() - 0.5) * 20; // 중앙 미드필더는 좌우로 폭넓게 스위칭
+                                            targetY = p.baseY + (Math.random() - 0.5) * 20; 
                                         }
                                         p.isMakingRun = true;
                                     } else {
-                                        let spaceX = state.ball.x + (dir * 10); 
+                                        let spaceX = refBallX + (dir * 10); 
                                         let spaceY = p.baseY + (state.ball.y - p.baseY) * 0.35;
                                         let bestY = spaceY;
                                         let maxFoundSpace = -Infinity;
                                         
-                                        // 좌우(Y축) 빈 공간 탐색 범위를 넓혀서 횡으로 활발하게 이동함 (-15, 0, 15)
                                         [-15, 0, 15].forEach(offset => {
                                             let testY = spaceY + offset;
                                             if (testY < 5 || testY > 95) return;
@@ -706,21 +690,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             }
                             else if (p.role === 'FW') {
                                 if (inAttackingHalf) {
-                                    let nearestDef = ... // 기존 유지
-                                    if (nearestDef && getDistance(p.x, p.y, nearestDef.x, nearestDef.y) < 6.5) {
-                                        // ... 기존 유지 (pullX, pullY)
-                                    } else {
-                                        // 스피드가 빠른 공격수는 오프사이드 라인을 아슬아슬하게 더 바짝 부수려 시도함
-                                        let runDepth = (p.stats && p.stats.spd > 85) ? 2 : 5;
-                                        targetX = targetGoalX - (dir * runDepth); 
-                                        targetY = 50 + (Math.random() - 0.5) * 25; 
-                                        p.isMakingRun = true;
-                                    } else {
-                                        targetX = targetGoalX - (dir * 4); 
-                                        // 스트라이커도 중앙에 가만히 서있지 않고 빈공간을 찾아 좌우로 스위칭
-                                        targetY = 50 + (Math.random() - 0.5) * 25; 
-                                        p.isMakingRun = true;
-                                    }
+                                    let runDepth = (p.stats && p.stats.spd > 85) ? 2 : 5;
+                                    targetX = targetGoalX - (dir * runDepth); 
+                                    targetY = 50 + (Math.random() - 0.5) * 25; 
+                                    p.isMakingRun = true;
                                     
                                     if (dir === 1 && targetX >= offsideLine) targetX = offsideLine - 1.0;
                                     if (dir === -1 && targetX <= offsideLine) targetX = offsideLine + 1.0;
@@ -730,7 +703,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 }
                             }
                             
-                            if (p.role !== 'GK' && p.role !== 'DF' && state.ball.x < offsideLine) {
+                            if (p.role !== 'GK' && p.role !== 'DF' && refBallX < offsideLine) {
                                 if (dir === 1 && targetX >= offsideLine) targetX = offsideLine - 1.0;
                                 if (dir === -1 && targetX <= offsideLine) targetX = offsideLine + 1.0;
                             }
@@ -756,8 +729,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     let otherHasBall = (ballCarrier && ballCarrier.id === other.id);
 
                                     if (pHasBall || otherHasBall) {
-                                        // [개선 1] 연속적인 무한 경합(비비기) 방지를 위해 경합 면역 쿨타임을 15틱(1.5초)으로 부여
-                                        // 이 시간 동안은 서로 다시 비비적거리지 않고 자신의 플레이를 이어감
                                         p.duelCooldown = 15; 
                                         other.duelCooldown = 15;
                                         
@@ -767,32 +738,41 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                         let pScore = pSpeed + (Math.random() * 30);
                                         let oScore = oSpeed + (Math.random() * 30);
 
-                                        // [개선 2] 1차 경합 패배 시 확실한 리액션 부여 (승패 명확화)
-                                        if (Math.random() < 0.15 || (oScore > pScore + 15 && !pHasBall)) {
-                                            // 턴오버 발생 (수비수 완승)
-                                            state.ball.vx = (Math.random() - 0.5) * 4; 
-                                            state.ball.vy = (Math.random() - 0.5) * 4;
-                                            state.eventText = "⚔️ 태클 성공!";
+                                        // 1차: 수비수가 공을 탈취하는 조건 (턴오버)
+                                        if (Math.random() < 0.20 || (oScore > pScore + 10 && !pHasBall)) {
+                                            state.ball.vx = (Math.random() - 0.5) * 5; 
+                                            state.ball.vy = (Math.random() - 0.5) * 5;
+                                            state.eventText = "⚔️ 태클 성공! 턴오버!";
                                             state.possessionTeam = 0; 
                                             state.passTargetId = null; 
                                             
-                                            // 공을 뺏긴 패자는 길게 멈칫(스턴)하고, 승자는 딜레이 없이 즉각 움직임
-                                            if (pHasBall) { p.cooldown = 8; other.cooldown = 0; }
-                                            else { other.cooldown = 8; p.cooldown = 0; }
+                                            // 뺏긴 패자는 길게 멈칫(스턴)하고, 승자는 딜레이 없이 즉각 움직임
+                                            if (pHasBall) { 
+                                                p.cooldown = 8; p.stunTicks = 12; // 공격수 스턴
+                                                p.x += (dx / d) * 1.5; p.y += (dy / d) * 1.5; // 살짝 밀려남
+                                            } else { 
+                                                other.cooldown = 8; other.stunTicks = 12; // 수비수 스턴 (공격수가 탈취 시)
+                                                other.x -= (dx / d) * 1.5; other.y -= (dy / d) * 1.5;
+                                            }
                                             
                                         } else {
-                                            // 턴오버는 안 났지만 몸싸움 승패 판정 (어거지 전진 차단)
+                                            // 2차: 턴오버는 안 났지만 몸싸움 승패 판정 (돌파 vs 블로킹)
                                             if (pScore > oScore) {
-                                                other.cooldown = 8; // 수비수 튕겨나감 (리액션)
-                                                p.cooldown = 0; 
-                                                state.eventText = "💪 경합 버텨냄!";
-                                                targetX += (dx / d) * 2.5; targetY += (dy / d) * 2.5;
+                                                // 승리: 드리블러가 수비수를 뚫어냄 (수비수 벗겨짐)
+                                                other.cooldown = 10; 
+                                                other.stunTicks = 15; // 수비수 발이 묶임 (핵심)
+                                                other.x -= (dx / d) * 2.5; // 수비수가 크게 뒤로 튕겨남
+                                                other.y -= (dy / d) * 2.5;
+                                                state.eventText = "⚡ 수비를 벗겨냅니다!";
                                             } else {
-                                                p.cooldown = 8; // 공격수 저지당함 (리액션)
-                                                other.cooldown = 0; 
+                                                // 패배: 드리블러가 수비벽에 가로막힘
+                                                p.cooldown = 10; 
+                                                p.stunTicks = 10; // 공격수 발이 묶임
+                                                p.x += (dx / d) * 2.0; // 공격수가 뒤로 밀려남
+                                                p.y += (dy / d) * 2.0;
                                                 state.eventText = "🧱 수비벽 블로킹!";
-                                                let repel = (1.2 - d) * 0.8;
-                                                targetX += (dx / d) * repel; targetY += (dy / d) * repel;
+                                                state.ball.vx *= 0.5; // 공도 살짝 멈칫
+                                                state.ball.vy *= 0.5;
                                             }
                                         }
                                     } else {
@@ -828,7 +808,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if (isPressing || state.passTargetId === p.id || p.isMakingRun) moveSpeed *= 1.25; 
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
                 if (state.phase !== 'play') moveSpeed *= 5.0; 
-                
+
+                if (p.stunTicks && p.stunTicks > 0) {
+                    p.stunTicks--;
+                    moveSpeed = 0; // 발이 완전히 묶임
+                }
+            
                 let distToTarget = getDistance(p.x, p.y, targetX, targetY) || 1;
                 if (distToTarget > moveSpeed) {
                     p.x += ((targetX - p.x) / distToTarget) * moveSpeed;
