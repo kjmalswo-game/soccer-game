@@ -682,35 +682,55 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let dx = p.x - other.x; let dy = p.y - other.y;
                         let d = Math.sqrt(dx*dx + dy*dy) || 1;
                         
-                        if (d < 2.0) { // 4.0 -> 2.0 축소
+                        // 1. 경합 범위 대폭 축소: 2.0 -> 1.2 (선수들이 확실히 부딪혔을 때만 발생)
+                        if (d < 1.2) { 
                             if (p.team === other.team) {
-                                let repel = (2.0 - d) * 0.2;
+                                // 같은 팀끼리는 아주 부드럽게만 빗겨가도록 힘 축소
+                                let repel = (1.2 - d) * 0.1;
                                 targetX += (dx / d) * repel; targetY += (dy / d) * repel;
                             } else {
                                 if (p.duelCooldown <= 0 && other.duelCooldown <= 0 && state.phase === 'play') {
                                     let pHasBall = (ballCarrier && ballCarrier.id === p.id);
                                     let otherHasBall = (ballCarrier && ballCarrier.id === other.id);
 
+                                    // 상황 A: 누군가 공을 가지고 있을 때의 '태클 경합'
                                     if (pHasBall || otherHasBall) {
-                                        p.duelCooldown = 25; // 태클 빈도 조절
-                                        other.duelCooldown = 25;
-                                        p.cooldown = 12;     
-                                        other.cooldown = 12;
+                                        // 2. 경합 시간(스턴) 심각하게 긴 문제 해결
+                                        p.duelCooldown = 12; // 25 -> 12 (약 1.2초간 연속 태클 면역)
+                                        other.duelCooldown = 12;
+                                        p.cooldown = 4;      // 12 -> 4 (약 0.4초만 멈칫함)
+                                        other.cooldown = 4;
                                         
                                         if (Math.random() < 0.25) {
                                             state.ball.vx = (Math.random() - 0.5) * 8; 
                                             state.ball.vy = (Math.random() - 0.5) * 8;
-                                            state.eventText = "⚔️ 강력한 태클!";
+                                            state.eventText = "⚔️ 태클 성공!";
                                             state.possessionTeam = 0; 
-                                            state.passTargetId = null; // 타겟 강제 해제
-                                        } else {
-                                            state.eventText = "💪 몸싸움 방어!";
+                                            state.passTargetId = null; 
                                         }
 
-                                        targetX += (dx / d) * 3; targetY += (dy / d) * 3;
+                                        // 태클 후 튕겨나가는 거리도 축소
+                                        targetX += (dx / d) * 1.5; targetY += (dy / d) * 1.5;
+                                        
+                                    // 상황 B: 둘 다 공이 없는 '루즈볼 달리기 경합' (프리징 현상 원인)
                                     } else {
-                                        let repel = (2.0 - d) * 0.15;
-                                        targetX += (dx / d) * repel; targetY += (dy / d) * repel;
+                                        // 3. 서로 똑같이 밀어내는 대신, 스피드 스탯 기반으로 승패를 명확히 가름
+                                        let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
+                                        let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
+                                        
+                                        // 스탯에 약간의 주사위(난수)를 섞어 변수 창출
+                                        let pScore = pSpeed + (Math.random() * 20);
+                                        let oScore = oSpeed + (Math.random() * 20);
+
+                                        if (pScore > oScore) {
+                                            // p가 어깨싸움 승리: other만 0.2초 멈칫하게 만들고 p는 뚫고 지나감
+                                            other.cooldown = 2; 
+                                        } else {
+                                            // other가 어깨싸움 승리: p가 0.2초 멈칫하고 살짝 튕겨남
+                                            p.cooldown = 2;
+                                            let repel = (1.2 - d) * 0.2;
+                                            targetX += (dx / d) * repel; targetY += (dy / d) * repel;
+                                        }
                                     }
                                 }
                             }
