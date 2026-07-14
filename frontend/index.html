@@ -55,6 +55,9 @@
         </div>
     </div>
 
+    <div id="goalLogBoard" style="position:absolute; top:10px; right:10px; background:rgba(255,255,255,0.8); padding:10px; border-radius:5px;">
+    </div>
+    
     <div id="screen-lobby" class="screen">
         <h2>대기방 (코드: <span id="display-code" style="color: #0fb9b1;"></span>)</h2>
         <h3 id="lobby-status" style="color: #f7b731; margin-bottom: 20px;">방 생성 중...</h3>
@@ -252,7 +255,15 @@
             data.players.forEach(p => {
                 const pEl = document.getElementById(`match-player-${p.team}-${p.id}`);
                 if(pEl) { pEl.style.left = p.x + '%'; pEl.style.top = p.y + '%'; }
-            });
+
+            const goalLogContainer = document.getElementById('goalLogBoard');
+            if (goalLogContainer && data.goalLog) {
+                goalLogContainer.innerHTML = '<strong>[ 득점 기록 ]</strong><br>';
+                data.goalLog.forEach(log => {
+                    let color = log.team === 1 ? 'blue' : 'red';
+                    goalLogContainer.innerHTML += `<span style="color:${color}; font-size:12px;">⚽ ${log.time} - ${log.scorer}</span><br>`;
+                });
+            }
         });
 
         socket.on('goalScored', (data) => {
@@ -327,12 +338,27 @@
             }, 1000);
         });
 
-        socket.on('matchEnded', (score) => {
-            showScreen('screen-result');
-            const resultText = document.getElementById('final-result-text');
-            if (score.team1 > score.team2) resultText.innerText = "TEAM 1 승리! 🎉";
-            else if (score.team2 > score.team1) resultText.innerText = "TEAM 2 승리! 🎉";
-            else resultText.innerText = "무승부! 🤝";
+        socket.on('matchEnded', (data) => {
+            // data.score 와 data.goalLog 가 들어옵니다.
+            let endMessage = `<h2>경기 종료!</h2>`;
+            endMessage += `<h3>최종 스코어: 블루팀 ${data.score.team1} : ${data.score.team2} 레드팀</h3><hr>`;
+            
+            // 시간별 득점 기록 나열
+            if (data.goalLog && data.goalLog.length > 0) {
+                endMessage += `<h4>상세 득점 기록</h4><ul style="text-align: left; max-width: 300px; margin: 0 auto;">`;
+                data.goalLog.forEach(log => {
+                    let teamName = log.team === 1 ? "블루팀" : "레드팀";
+                    let color = log.team === 1 ? "blue" : "red";
+                    endMessage += `<li style="color:${color}; margin-bottom:5px;">⚽ <b>${teamName}</b>: ${log.scorer} (${log.time})</li>`;
+                });
+                endMessage += `</ul>`;
+            } else {
+                endMessage += `<p>득점 없음 (0:0 무승부)</p>`;
+            }
+        
+            // 화면 가운데 결과창 div에 텍스트 삽입 (예시)
+            document.getElementById('resultScreen').innerHTML = endMessage;
+            document.getElementById('resultScreen').style.display = 'block';
         });
         
         socket.on('error', (msg) => {
