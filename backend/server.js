@@ -946,7 +946,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     if (ballSpeedSq > 10) { 
                         state.ball.vx = 0; 
                         state.ball.vy = 0; 
-                        state.ball.x = p.x + (dir * 0.3); // 몸 앞쪽으로 예쁘게 잡아놓기
+                        state.ball.x = p.x + (dir * 2); // 몸 앞쪽으로 예쁘게 잡아놓기
                         state.ball.y = p.y; 
                         
                         // 쿨다운(경직)을 1에서 0으로 아예 없애버림. 터치하자마자 곧바로 다음 드리블이나 패스를 이어감
