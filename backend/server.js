@@ -319,10 +319,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             let isSupport = false;
             
             if (state.isKickoff) {
-                let isStriker = (p.team === state.kickoffTeam) && (p.x === 50) && (p.y === 52 || p.y === 48);
+                // ★ 실시간 좌표가 아닌 배정된 스트라이커 ID 정보로 완벽하게 판정
+                let isStriker = (p.id === state.kickoffStrikerId); 
                 if (isStriker) { targetX = 50; targetY = 50; isPressing = true; } 
                 else { targetX = p.baseX; targetY = p.baseY; }
-            } 
+            }
             else {
                 if (p.role !== 'GK' && attTeam !== p.team) {
                     if (p.role === 'FW') {
