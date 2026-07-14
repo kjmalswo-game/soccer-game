@@ -375,14 +375,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let fieldPlayers = state.players.filter(p => p.role !== 'GK' && p.id !== state.throwerId);
                             let mates = fieldPlayers.filter(p => p.team === state.possessionTeam);
                             
-                            // 전방에만 주지 않고, 상대가 멀리 있는(>6) 안전한 동료들을 찾음
                             let safeMates = mates.filter(m => {
                                 let minE = Math.min(...state.players.filter(e => e.team !== m.team).map(e => getDistance(m.x, m.y, e.x, e.y)));
                                 return minE > 6;
                             });
-                            if (safeMates.length === 0) safeMates = mates; // 안전한 곳이 없으면 원래대로
+                            if (safeMates.length === 0) safeMates = mates; 
                             
-                            // 거리순 정렬 후 가장 가까운 3명 중 랜덤으로 선택 (백패스 포함)
                             safeMates.sort((a,b) => getDistance(state.ball.x, state.ball.y, a.x, a.y) - getDistance(state.ball.x, state.ball.y, b.x, b.y));
                             let target = safeMates[Math.floor(Math.random() * Math.min(3, safeMates.length))];
                             
@@ -405,17 +403,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         } 
                         else if (state.phase === 'goal_kick') {
                             let kickDir = (state.possessionTeam === leftTeam) ? 1 : -1;
-                            if (p.team === state.possessionTeam) {
-                                // 공격하는 팀 (골킥 차는 팀): 무리하게 안 올라가고 하프라인 아래쪽에서 받으러 옴
-                                if (p.role === 'FW') { targetX = 50 + (kickDir * 2) + organicX; targetY = p.baseY; } // 하프라인 선상
-                                else if (p.role === 'MF') { targetX = 50 - (kickDir * 10) + organicX; targetY = p.baseY; } // 하프라인 아래
-                                else { targetX = (p.team === leftTeam) ? 22 : 78; targetY = p.baseY; }
-                            } else {
-                                // 수비하는 팀 (골킥 막는 팀): 롱볼에 대비해 라인을 확실하게 뒤로 내림
-                                if (p.role === 'FW') { targetX = 50 + (kickDir * 5) + organicX; targetY = p.baseY; }
-                                else if (p.role === 'MF') { targetX = 50 + (kickDir * 15) + organicX; targetY = p.baseY; }
-                                else if (p.role === 'DF') { targetX = 50 + (kickDir * 30) + organicX; targetY = p.baseY; }
-                            }
+                            state.ball.vx = kickDir * 7.5; 
+                            state.ball.vy = (Math.random() - 0.5) * 4.0; 
+                            state.ball.airTicks = 6;
+                            state.eventText = "👟 골킥 롱패스!";
                         }
                         else if (state.phase === 'free_kick') {
                             let targetX = state.ball.x + dir * 35;
