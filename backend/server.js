@@ -565,7 +565,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         else if (p.role === 'DF') blockX = Math.max(10, Math.min(90, state.ball.x - (dir * 28)));
 
                         if (isLooseBall && rank === 0) {
-                            targetX = pTargetX; targetY = pTargetY; isPressing = true;
+                            // 완벽히 같은 좌표로 달려가서 비비적거리는 현상(프리징)을 막기 위해 미세한 위치 오프셋 추가
+                            targetX = pTargetX + (p.id % 3 - 1) * 0.5; 
+                            targetY = pTargetY + (p.id % 2 === 0 ? 0.5 : -0.5); 
+                            isPressing = true;
                         }
                         else if (!isLooseBall && rank === 0 && distToBall < 18) { 
                             targetX = state.ball.x; targetY = state.ball.y; isPressing = true; 
@@ -731,8 +734,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                                         targetX += (dx / d) * 3; targetY += (dy / d) * 3;
                                     } else {
-                                        let repel = (4.0 - d) * 0.1;
-                                        targetX += (dx / d) * repel; targetY += (dy / d) * repel;
+                                        // 공이 없는 상태의 경합 반경을 4.0에서 2.5로 줄여 불필요한 움찔거림 최소화
+                                        if (d < 2.5) {
+                                            let repel = (2.5 - d) * 0.15;
+                                            targetX += (dx / d) * repel; targetY += (dy / d) * repel;
+                                        }
                                     }
                                 }
                             }
@@ -805,6 +811,24 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             }
                         });
                     }
+                    
+                    // 슈팅 능력치에 따라 중거리 슛 허용 거리(maxShotDist) 증가
+                    let maxShotDist = (p.stats && p.stats.sht && p.stats.sht >= 85) ? 42 : 32; 
+                    if (distToGoal < maxShotDist && !shotBlocked) {
+                        // 거리가 멀면 슛 확률을 낮추어(중거리 난사 방지) 패스나 치달 등 다른 옵션도 고려하도록 함
+                        let shootProb = distToGoal > 32 ? ((p.stats.sht || 80) - 60) / 100 : 1.0; 
+                        
+                        if (Math.random() < shootProb) {
+                            io.to(roomCode).emit('playSound', 'kick');
+                            let power = ((p.stats && p.stats.sht ? p.stats.sht : 85) / 9.0);  
+                            let aimY = 50 + (Math.random() - 0.5) * 12; 
+                            let dx = targetGoalX - p.x, dy = aimY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1; 
+                            state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
+                            p.cooldown = 10; 
+                            state.eventText = distToGoal > 32 ? "🚀 기습 중거리 슛!" : "🔥 슈팅 찬스!";
+                            return;
+                        }
+                    }
 
                     if (distToGoal < 32 && !shotBlocked) {
                         io.to(roomCode).emit('playSound', 'kick');
@@ -817,6 +841,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
 
                     // [요구사항 2] 패스 의사 결정 평가식 수정 (의미없는 제자리 핑퐁 억제)
+                    // 1. 공통으로 쓸 변수를 가장 먼저 선언합니다.
+                    let inFinalThird = (p.team === 1 && state.ball.x > 65) || (p.team === 2 && state.ball.x < 35);
+
+                    // [요구사항 2 & 파이널 서드 개선] 패스 의사 결정 평가식
                     let passOptions = [];
                     state.players.forEach(m => {
                         if (m.team === p.team && m.id !== p.id && m.role !== 'GK') {
@@ -845,7 +873,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             score -= (dist * 0.35); 
                             score += (minEnemyDistToM * 4); 
 
-                            // 핑퐁 억제 핵심 로직: 방금 나한테 패스한 상대에게 곧바로 돌아가는 패스 경로의 점수를 압도적으로 깎아 억제함
+                            // 핑퐁 억제 핵심 로직
                             if (state.lastPasserId === m.id) {
                                 score -= 1500; 
                             }
@@ -853,8 +881,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             // 다이내믹 창의성 변수 적용
                             score += (Math.random() * 40);
 
+                            // 2. 패스 경로 평가 (반복문 내부)
                             if (m.isMakingRun && forwardDist > 0 && minEnemyDistToM > 5 && !laneBlocked) {
                                 score += 650; 
+                                isThrough = true;
+                            }
+                            // 컷백 로직 추가
+                            if (inFinalThird && m.isMakingRun && forwardDist < 0 && forwardDist > -15 && !laneBlocked) {
+                                score += 750; 
                                 isThrough = true;
                             }
 
@@ -871,6 +905,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
 
                     if (bestOption && bestOption.score > 25) {
+                        // 패스 실행
                         let errorMargin = 1.8; 
                         let targetX = bestOption.mate.x + (Math.random() - 0.5) * errorMargin; 
                         let targetY = bestOption.mate.y + (Math.random() - 0.5) * errorMargin;
@@ -889,10 +924,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         else state.eventText = "연계 플레이";
                         
                         state.passTargetId = bestOption.mate.id; 
-                        state.lastPasserId = p.id; // 최종 패서 등록 완료
+                        state.lastPasserId = p.id; 
                         p.cooldown = 8; 
                     } 
                     else {
+                        // 3. 드리블 분기점 로직 (동료 확인 반복문이 끝나고 패스를 안 하기로 결정했을 때)
                         let pSpeed = ((p.stats && p.stats.spd ? p.stats.spd : 80) / 100);
                         let nearestEnemy = state.players.find(e => e.team !== p.team && getDistance(e.x, e.y, p.x, p.y) < 8);
                         
@@ -902,8 +938,19 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             p.cooldown = 2; 
                         } else {
                             let centerDriveVy = (50 - p.y) * 0.05 + (Math.random() - 0.5);
-                            state.ball.vx = dir * pSpeed * 1.5; state.ball.vy = centerDriveVy; state.eventText = "전진 드리블";
-                            p.cooldown = 3; 
+                            
+                            // 치달 로직 추가: 파이널 서드에서 앞공간이 비어있을 때 확률적으로 발동
+                            if (inFinalThird && Math.random() < 0.4) {
+                                state.ball.vx = dir * pSpeed * 3.5; 
+                                state.ball.vy = centerDriveVy * 1.5; 
+                                state.eventText = "⚡ 치달 돌파!";
+                                p.cooldown = 6; 
+                            } else {
+                                state.ball.vx = dir * pSpeed * 1.5; 
+                                state.ball.vy = centerDriveVy; 
+                                state.eventText = "전진 드리블";
+                                p.cooldown = 3; 
+                            }
                         }
                     }
                 }
