@@ -52,8 +52,15 @@ function resetPositions(state, kickoffTeam) {
     state.kickoffTeam = kickoffTeam;
     state.passTargetId = null; 
     state.players.forEach(p => { p.x = p.baseX; p.y = p.baseY; p.cooldown = 0; });
+    
     const striker = state.players.find(p => p.team === kickoffTeam && p.role === 'FW') || state.players.find(p => p.team === kickoffTeam);
-    if (striker) { striker.x = kickoffTeam === 1 ? 47 : 53; striker.y = 50; }
+    if (striker) { 
+        striker.x = kickoffTeam === 1 ? 47 : 53; // 전반전 시작 프레임 터치 반칙 방지를 위해 Y축 대신 X축으로 살짝 거리를 벌림
+        striker.y = 50; 
+        state.kickoffStrikerId = striker.id; // ★ 킥오프를 전담할 선수의 고유 ID 기록
+    } else {
+        state.kickoffStrikerId = null;
+    }
 }
 
 function emitUpdate(roomCode, state) {
