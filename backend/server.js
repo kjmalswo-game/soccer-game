@@ -428,14 +428,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             if (state.phase === 'play') {
                 state.ball.x += state.ball.vx; state.ball.y += state.ball.vy;
                 state.ball.vx *= 0.90; state.ball.vy *= 0.90; 
-                
                 if (state.ball.airTicks && state.ball.airTicks > 0) state.ball.airTicks--;
-                // ★ 슛 플래그 타이머 감소
                 if (state.ball.shotTicks && state.ball.shotTicks > 0) state.ball.shotTicks--;
                 
                 let speedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
-                // ★ 슈팅 상태일 때는 속도 캡을 25에서 100으로 대폭 상향시켜 대포알 슛 허용
-                let maxSpeedSq = (state.ball.shotTicks > 0) ? 100 : 25; 
+                
+                // ★ 슈팅 시 최고 속도 제한(캡)을 169(초속 13)로 대폭 상향하여 대포알 슈팅 보장
+                let maxSpeedSq = (state.ball.shotTicks > 0) ? 169 : 25; 
                 
                 if (speedSq > maxSpeedSq) { 
                     let speed = Math.sqrt(speedSq);
@@ -562,9 +561,23 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         targetY = Math.max(30, Math.min(70, targetY));
                     }
                     else if (attTeam !== p.team) {
-                        let shiftY = (state.ball.y - 50) * 0.35; 
-                        let blockY = p.baseY + shiftY + organicY;
+                        // ★ 수비 시 공의 위치에 따라 전체 라인이 공 쪽으로 쏠림 (지역 방어)
+                        let shiftY = (state.ball.y - 50) * 0.4; 
                         
+                        // ★ [핵심 개선 1] 센터백과 풀백이 중앙으로 간격을 좁혀 골대 앞을 방어 (Pinch In)
+                        let pinchFactor = 1.0;
+                        if (p.posId === 'CB') pinchFactor = 0.2; // 센터백은 중앙(50)에 극도로 가깝게 밀집
+                        else if (p.role === 'DF') pinchFactor = 0.6; // 풀백도 중앙으로 좁힘
+                        else if (p.role === 'MF') pinchFactor = 0.75; 
+
+                        let blockY = 50 + (p.baseY - 50) * pinchFactor + shiftY + organicY;
+                        
+                        // 자기 골대 근처(페널티 박스 부근)일수록 더 촘촘하게 중앙 밀집
+                        let distToOwnGoal = Math.abs(p.x - (p.team === leftTeam ? 0 : 100));
+                        if (distToOwnGoal < 25) {
+                            blockY = 50 + (blockY - 50) * 0.5;
+                        }
+
                         let blockX = p.baseX + organicX;
                         if (p.role === 'FW') blockX = state.ball.x - (dir * 8);
                         else if (p.role === 'MF') blockX = Math.max(25, Math.min(75, state.ball.x - (dir * 18)));
@@ -606,18 +619,18 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 let maxPushX = (p.team === leftTeam) ? (inAttackingHalf ? 55 : 46) : (inAttackingHalf ? 45 : 54); 
                                 let cbTargetX = (p.team === leftTeam) ? Math.min(maxPushX, state.ball.x - 20) : Math.max(maxPushX, state.ball.x + 20);
                                 targetX = p.baseX + (dir * Math.max(0, (p.team === leftTeam ? cbTargetX - p.baseX : p.baseX - cbTargetX)));
-                                targetY = p.baseY + organicY;
+                                // 빌드업 시 중앙을 비우고 좌우로 살짝 벌려서 패스길 창출 (Lateral Movement)
+                                targetY = 50 + (p.baseY - 50) * 1.2 + organicY;
                             }
                             else if (p.posId === 'LB' || p.posId === 'RB') {
                                 if (inAttackingHalf) {
-                                    // [핵심 개선] 공격 시 풀백이 공보다 훨씬 앞쪽까지 폭발적으로 오버랩
-                                    targetX = state.ball.x + (dir * 20); 
+                                    targetX = state.ball.x + (dir * 15); 
                                     let goalLine = (p.team === leftTeam) ? 95 : 5;
                                     if (dir === 1 && targetX > goalLine) targetX = goalLine;
                                     if (dir === -1 && targetX < goalLine) targetX = goalLine;
                                     
-                                    targetY = p.baseY + (p.posId === 'LB' ? -10 : 10); 
-                                    targetY = Math.max(5, Math.min(95, targetY));
+                                    // [핵심 개선 2] 풀백이 너무 사이드에 박히지 않고, 페널티 박스 모서리 부근(언더랩)으로 좁혀서 침투
+                                    targetY = 50 + (p.baseY - 50) * 0.7; 
                                     p.isMakingRun = true;
                                 } else {
                                     let fbAdvance = (p.team === leftTeam) ? state.ball.x - 5 : state.ball.x + 5;
@@ -631,22 +644,29 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 let isWing = p.posId.includes('LM') || p.posId.includes('RM') || p.posId.includes('LW') || p.posId.includes('RW');
 
                                 if (isDM) {
-                                    // [핵심 개선] 수비형 미드필더도 공격 시 하프라인을 뚫고 올라와 2선 공격을 지원
                                     let dmAdvance = (p.team === leftTeam) ? state.ball.x - 12 : state.ball.x + 12;
                                     targetX = inAttackingHalf ? state.ball.x - (dir * 12) : p.baseX + (dir * Math.max(0, (p.team === leftTeam ? dmAdvance - p.baseX : p.baseX - dmAdvance) * 0.8));
                                     targetY = p.baseY + organicY;
                                 } else {
-                                    // [핵심 개선] CM, AM, 측면 미드필더들이 득점을 위해 박스 근처로 적극 침투
                                     if (inAttackingHalf) {
                                         targetX = targetGoalX - (dir * (isWing ? 8 : 15));
-                                        targetY = p.baseY + (Math.random() - 0.5) * 15;
+                                        
+                                        // [핵심 개선 2] 윙어들이 직선으로만 뛰지 않고 중앙(하프스페이스/박스 안)으로 파고드는 '컷 인사이드' 움직임
+                                        if (isWing) {
+                                            let cutInsideY = 50 + (p.baseY - 50) * 0.3; // 윙어가 박스 안쪽으로 70% 좁혀 들어옴
+                                            targetY = cutInsideY + organicY;
+                                        } else {
+                                            targetY = p.baseY + (Math.random() - 0.5) * 20; // 중앙 미드필더는 좌우로 폭넓게 스위칭
+                                        }
                                         p.isMakingRun = true;
                                     } else {
                                         let spaceX = state.ball.x + (dir * 10); 
                                         let spaceY = p.baseY + (state.ball.y - p.baseY) * 0.35;
                                         let bestY = spaceY;
                                         let maxFoundSpace = -Infinity;
-                                        [-12, 0, 12].forEach(offset => {
+                                        
+                                        // 좌우(Y축) 빈 공간 탐색 범위를 넓혀서 횡으로 활발하게 이동함 (-15, 0, 15)
+                                        [-15, 0, 15].forEach(offset => {
                                             let testY = spaceY + offset;
                                             if (testY < 5 || testY > 95) return;
                                             let localMin = Infinity;
@@ -674,13 +694,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                                     if (nearestDef && getDistance(p.x, p.y, nearestDef.x, nearestDef.y) < 6.5) {
                                         let pullX = (p.x > nearestDef.x) ? 1.8 : -1.8;
-                                        let pullY = (p.y > nearestDef.y) ? 1.8 : -1.8;
-                                        targetX = p.x + pullX * 6; // 수비수 반대편으로 더 크게 돌아 뜀
-                                        targetY = p.y + pullY * 6;
+                                        let pullY = (p.y > nearestDef.y) ? 2.5 : -2.5; // Y축 횡이동 회피 기동 대폭 강화
+                                        targetX = p.x + pullX * 5;
+                                        targetY = p.y + pullY * 5;
                                         p.isMakingRun = true;
                                     } else {
-                                        targetX = targetGoalX - (dir * 4); // 페널티 박스 깊숙이 진입
-                                        targetY = 50 + (Math.random() - 0.5) * 20; 
+                                        targetX = targetGoalX - (dir * 4); 
+                                        // 스트라이커도 중앙에 가만히 서있지 않고 빈공간을 찾아 좌우로 스위칭
+                                        targetY = 50 + (Math.random() - 0.5) * 25; 
                                         p.isMakingRun = true;
                                     }
                                     
@@ -829,29 +850,28 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
 
                     // ★ 슈팅 난사 제한 로직
-                    // ★ 슈팅 난사 제한 로직 및 타겟팅 개선
                     let maxShotDist = (p.stats && p.stats.sht && p.stats.sht >= 85) ? 30 : 22; 
                     
-                    // [핵심 개선] 공격수(FW)가 골문 22m 이내에 진입하면 슛 확률 100% 보장 (백패스 억제)
                     let isStrikerInBox = (p.role === 'FW' && distToGoal < 22);
                     let shootProb = isStrikerInBox ? 1.0 : (distToGoal > 20 ? ((p.stats.sht || 80) - 75) / 100 : 1.0); 
 
                     if (distToGoal < maxShotDist && !shotBlocked) {
                         if (Math.random() < shootProb) {
                             io.to(roomCode).emit('playSound', 'kick');
-                            // 파워 분모를 10.0에서 8.0으로 낮춰 기본 슈팅력을 끌어올림
-                            let power = ((p.stats && p.stats.sht ? p.stats.sht : 85) / 8.0);  
                             
-                            // [핵심 개선] 골키퍼 정면(50)이 아닌 위쪽 구석(38~42)이나 아래쪽 구석(58~62)을 정교하게 노림
-                            let aimY = (Math.random() < 0.5) ? (38 + Math.random() * 4) : (58 + Math.random() * 4);
+                            // [핵심 개선 3] 무조건 유효슈팅/결정을 짓는 '대포알 슈팅' 파워 연산 (최소 8.5 보장, 스탯 비례 최대 12.0)
+                            let power = 8.5 + (((p.stats && p.stats.sht ? p.stats.sht : 80) - 70) * 0.15);
+                            
+                            // [핵심 개선 3] 골키퍼 정면(50)이 아닌, 골대 완전 구석 사각지대(36~39 또는 61~64)로 날카롭게 조준
+                            let aimY = (Math.random() < 0.5) ? (36 + Math.random() * 3) : (61 + Math.random() * 3);
                             
                             let dx = targetGoalX - p.x, dy = aimY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1; 
                             state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
                             
-                            // ★ 물리 엔진에 이 공은 '슈팅'임을 알림 (속도 제한 해제용)
-                            state.ball.shotTicks = 10; 
-                            p.cooldown = 10; 
-                            state.eventText = distToGoal > 24 ? "🚀 기습 중거리 슛!" : "🔥 예리한 슈팅!";
+                            // 슛 플래그 시간을 15틱으로 늘려, 공이 날아가는 동안 물리 엔진의 속도 저항을 무시하게 함
+                            state.ball.shotTicks = 15; 
+                            p.cooldown = 12; 
+                            state.eventText = distToGoal > 24 ? "🚀 벼락같은 중거리 슛!" : "🔥 결정적 슈팅!";
                             return;
                         }
                     }
