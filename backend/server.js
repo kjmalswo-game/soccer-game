@@ -529,41 +529,18 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     } 
                     // ★ 골킥 전술 준비 상황 포지셔닝
                     else if (state.phase === 'goal_kick') {
-                        let kickDir = (state.possessionTeam === leftTeam) ? 1 : -1;
+                        // dir은 선수의 소속 팀(left/right)에 따라 1 또는 -1로 이미 상단에서 정의되어 있음
+                        // 이를 이용해 '50 - (dir * 오프셋)' 공식을 쓰면, 어느 팀이든 무조건 하프라인(50)을 넘지 않고 자기 진영에 위치하게 됨
                         if (p.team === state.possessionTeam) {
-                            // 공격하는 팀 (골킥 차는 팀)
-                            if (p.role === 'FW') { 
-                                // 공격수: 하프라인 너머 상대 진영 깊숙이 배치 (공격 전개 대비)
-                                targetX = 50 + (kickDir * 18) + organicX; 
-                                targetY = p.baseY; 
-                            }
-                            else if (p.role === 'MF') { 
-                                // 미드필더: 하프라인 근처에 올라가 세컨볼 싸움 준비
-                                targetX = 50 + (kickDir * 8) + organicX; 
-                                targetY = p.baseY; 
-                            }
-                            else { 
-                                // 빌드업 수비진: 골키퍼 롱킥을 등지고 페널티 박스 외곽에서 벌려 대기
-                                targetX = (p.team === leftTeam) ? 22 : 78; 
-                                targetY = p.baseY; 
-                            }
+                            // 공격하는 팀 (골킥 차는 팀): 무조건 하프라인을 넘지 않고 자기 진영에 대기
+                            if (p.role === 'FW') { targetX = 50 - (dir * 2) + organicX; targetY = p.baseY; } // 하프라인 바로 뒤에서 롱볼 대비
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 15) + organicX; targetY = p.baseY; } // 수비와 공격수 사이에서 빌드업 준비
+                            else { targetX = 50 - (dir * 32) + organicX; targetY = p.baseY; } // 키퍼 앞쪽 페널티박스 외곽에 수비라인 형성
                         } else {
-                            // 수비하는 팀 (골킥 막는 팀)
-                            if (p.role === 'FW') { 
-                                // 공격수: 하프라인 선상에서 상대 빌드업을 견제
-                                targetX = 50 - (kickDir * 5) + organicX; 
-                                targetY = p.baseY; 
-                            }
-                            else if (p.role === 'MF') { 
-                                // 미드필더: 하프라인 바로 뒤쪽에 밀집 대형 형성
-                                targetX = 50 - (kickDir * 12) + organicX; 
-                                targetY = p.baseY; 
-                            }
-                            else if (p.role === 'DF') { 
-                                // 수비수: 롱볼 헤더 컷팅을 위해 수비 라인을 탄탄하게 뒤로 내림
-                                targetX = 50 - (kickDir * 25) + organicX; 
-                                targetY = p.baseY; 
-                            }
+                            // 수비하는 팀 (골킥 막는 팀): 자기 진영에서 대형을 갖추고 세컨볼 경합 준비
+                            if (p.role === 'FW') { targetX = 50 - (dir * 5) + organicX; targetY = p.baseY; } // 하프라인 선상에서 세컨볼 노림
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 22) + organicX; targetY = p.baseY; } // 자기 진영 낮은 위치
+                            else if (p.role === 'DF') { targetX = 50 - (dir * 35) + organicX; targetY = p.baseY; } // 최후방 수비 대형 유지
                         }
                     }
                     else {
