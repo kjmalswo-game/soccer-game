@@ -84,7 +84,6 @@
     {"id": 58, "name": "비르츠", "stats": {"spd": 86, "sht": 84, "pas": 86}},
     {"id": 59, "name": "소보슬러이", "stats": {"spd": 83, "sht": 89, "pas": 85}},
     {"id": 60, "name": "맥토미니", "stats": {"spd": 85, "sht": 86, "pas": 83}},
-    {"id": 60, "name": "벤제마", "stats": {"spd": 82, "sht": 91, "pas": 85}},
     {"id": 61, "name": "레앙", "stats": {"spd": 86, "sht": 83, "pas": 78}},
     {"id": 62, "name": "오시멘", "stats": {"spd": 85, "sht": 87, "pas": 71}},
     {"id": 63, "name": "이사크", "stats": {"spd": 83, "sht": 87, "pas": 77}},
@@ -123,6 +122,7 @@
     {"id": 96, "name": "피케", "stats": {"spd": 79, "sht": 58, "pas": 80}},
     {"id": 97, "name": "밀리탕", "stats": {"spd": 81, "sht": 55, "pas": 75}},
     {"id": 98, "name": "트로사르", "stats": {"spd": 84, "sht": 80, "pas": 82}},
-    {"id": 99, "name": "솔랑케", "stats": {"spd": 80, "sht": 86, "pas": 73}}
+    {"id": 99, "name": "솔랑케", "stats": {"spd": 80, "sht": 86, "pas": 73}},
+    {"id": 100, "name": "벤제마", "stats": {"spd": 82, "sht": 91, "pas": 85}},
   ]
 }
