@@ -427,15 +427,21 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             // --- 2. 물리 연산 ---
             if (state.phase === 'play') {
                 state.ball.x += state.ball.vx; state.ball.y += state.ball.vy;
-                // 마찰력을 0.92 -> 0.90으로 늘려 공이 덜 튀게 함
                 state.ball.vx *= 0.90; state.ball.vy *= 0.90; 
+                
                 if (state.ball.airTicks && state.ball.airTicks > 0) state.ball.airTicks--;
+                // ★ 슛 플래그 타이머 감소
+                if (state.ball.shotTicks && state.ball.shotTicks > 0) state.ball.shotTicks--;
                 
                 let speedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
-                if (speedSq > 25) { // 최고 속도 캡 36 -> 25로 대폭 하향 (너무 빠른 핑퐁 방지)
+                // ★ 슈팅 상태일 때는 속도 캡을 25에서 100으로 대폭 상향시켜 대포알 슛 허용
+                let maxSpeedSq = (state.ball.shotTicks > 0) ? 100 : 25; 
+                
+                if (speedSq > maxSpeedSq) { 
                     let speed = Math.sqrt(speedSq);
-                    state.ball.vx = (state.ball.vx / speed) * 5;
-                    state.ball.vy = (state.ball.vy / speed) * 5;
+                    let cap = Math.sqrt(maxSpeedSq);
+                    state.ball.vx = (state.ball.vx / speed) * cap;
+                    state.ball.vy = (state.ball.vy / speed) * cap;
                 }
             }
 
@@ -823,25 +829,34 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     }
 
                     // ★ 슈팅 난사 제한 로직
-                    let maxShotDist = (p.stats && p.stats.sht && p.stats.sht >= 85) ? 28 : 20; 
+                    // ★ 슈팅 난사 제한 로직 및 타겟팅 개선
+                    let maxShotDist = (p.stats && p.stats.sht && p.stats.sht >= 85) ? 30 : 22; 
+                    
+                    // [핵심 개선] 공격수(FW)가 골문 22m 이내에 진입하면 슛 확률 100% 보장 (백패스 억제)
+                    let isStrikerInBox = (p.role === 'FW' && distToGoal < 22);
+                    let shootProb = isStrikerInBox ? 1.0 : (distToGoal > 20 ? ((p.stats.sht || 80) - 75) / 100 : 1.0); 
+
                     if (distToGoal < maxShotDist && !shotBlocked) {
-                        let shootProb = distToGoal > 20 ? ((p.stats.sht || 80) - 75) / 100 : 1.0; 
-                        
                         if (Math.random() < shootProb) {
                             io.to(roomCode).emit('playSound', 'kick');
-                            let power = ((p.stats && p.stats.sht ? p.stats.sht : 85) / 10.0);  
-                            let aimY = 50 + (Math.random() - 0.5) * 12; 
+                            // 파워 분모를 10.0에서 8.0으로 낮춰 기본 슈팅력을 끌어올림
+                            let power = ((p.stats && p.stats.sht ? p.stats.sht : 85) / 8.0);  
+                            
+                            // [핵심 개선] 골키퍼 정면(50)이 아닌 위쪽 구석(38~42)이나 아래쪽 구석(58~62)을 정교하게 노림
+                            let aimY = (Math.random() < 0.5) ? (38 + Math.random() * 4) : (58 + Math.random() * 4);
+                            
                             let dx = targetGoalX - p.x, dy = aimY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1; 
                             state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
+                            
+                            // ★ 물리 엔진에 이 공은 '슈팅'임을 알림 (속도 제한 해제용)
+                            state.ball.shotTicks = 10; 
                             p.cooldown = 10; 
-                            state.eventText = distToGoal > 24 ? "🚀 기습 중거리 슛!" : "🔥 슈팅 찬스!";
+                            state.eventText = distToGoal > 24 ? "🚀 기습 중거리 슛!" : "🔥 예리한 슈팅!";
                             return;
                         }
                     }
 
                     let inFinalThird = (p.team === leftTeam && state.ball.x > 65) || (p.team === rightTeam && state.ball.x < 35);
-
-                    // 현재 공격 진영인지 수비 진영인지, 압박을 받고 있는지 전역 판별
                     let inAttackingHalf = (p.team === leftTeam && state.ball.x > 50) || (p.team === rightTeam && state.ball.x < 50);
                     let inOwnHalf = (p.team === leftTeam && state.ball.x <= 50) || (p.team === rightTeam && state.ball.x >= 50);
                     let isPressed = state.players.some(e => e.team !== p.team && getDistance(p.x, p.y, e.x, e.y) < 12);
@@ -869,33 +884,32 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             
                             if (laneBlocked) score -= 2000; 
 
-                            if (inAttackingHalf) {
-                                score += (forwardDist * 7.5); 
-                            } else {
-                                score += (forwardDist * 4.5); 
+                            // [핵심 개선] 백패스 혐오 로직 (롱 백패스 및 공격수 백패스 절대 금지)
+                            if (forwardDist < -2) {
+                                // 1. 뒤로 주는 패스인데 거리가 15 이상 멀다? 절대 안 함
+                                if (dist > 15) score -= 5000; 
+                                // 2. 최전방 공격수(FW)가 공격 진영에서 뜬금없이 뒤로 돌리는 행위 원천 차단
+                                if (p.role === 'FW' && inAttackingHalf) score -= 5000;
                             }
 
+                            if (inAttackingHalf) score += (forwardDist * 7.5); 
+                            else score += (forwardDist * 4.5); 
+
                             if (inOwnHalf && isPressed && forwardDist > 10 && !laneBlocked) {
-                                score += 800; 
-                                isThrough = true; 
+                                score += 800; isThrough = true; 
                             }
 
                             score -= (dist * 0.85); 
                             score += (minEnemyDistToM * 4); 
 
-                            if (state.lastPasserId === m.id) {
-                                score -= 1500; 
-                            }
-
+                            if (state.lastPasserId === m.id) score -= 1500; 
                             score += (Math.random() * 40);
 
                             if (m.isMakingRun && forwardDist > 0 && minEnemyDistToM > 5 && !laneBlocked) {
-                                score += inAttackingHalf ? 850 : 650; 
-                                isThrough = true;
+                                score += inAttackingHalf ? 850 : 650; isThrough = true;
                             }
                             if (inFinalThird && m.isMakingRun && forwardDist < 0 && forwardDist > -15 && !laneBlocked) {
-                                score += 750; 
-                                isThrough = true;
+                                score += 750; isThrough = true;
                             }
 
                             if (score > 0) passOptions.push({ mate: m, score: score, dist: dist, isThrough: isThrough });
@@ -906,23 +920,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     let bestOption = passOptions.length > 0 ? passOptions[0] : null;
 
                     let ballSpeedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
-                    
-                    // [핵심 개선 1] 퍼스트 터치 미스/허무한 헌납 방지
-                    // 공을 받을 때의 멈칫하는 시간(cooldown)을 3에서 1로 줄여, 터치하자마자 바로 다음 동작을 이어가게 함
                     if (ballSpeedSq > 10) { 
                         state.ball.vx *= 0.05; state.ball.vy *= 0.05; state.ball.x = p.x; state.ball.y = p.y; 
-                        p.cooldown = 1; 
-                        state.eventText = "볼 컨트롤";
-                        return; 
+                        p.cooldown = 1; state.eventText = "볼 컨트롤"; return; 
                     }
 
-                    // [핵심 개선 2] 최전방 공격수(FW)의 등지기(볼 키핑) 및 킬패스 대기 지능
                     let wantsToHold = (p.role === 'FW' && inAttackingHalf);
-                    // FW는 확실한 침투 찬스(isThrough)가 아니면 웬만한 점수(65점)의 평범한 패스는 무시하고 공을 직접 지킴
                     let passThreshold = wantsToHold ? (bestOption && bestOption.isThrough ? 25 : 65) : 25;
 
                     if (bestOption && bestOption.score > passThreshold) {
-                        // [핵심 개선 3] 패스 삑사리(이상한 곳으로 방출) 완벽 억제: 오차 마진 1.2 -> 0.4 축소
                         let errorMargin = 0.4; 
                         let targetX = bestOption.mate.x + (Math.random() - 0.5) * errorMargin; 
                         let targetY = bestOption.mate.y + (Math.random() - 0.5) * errorMargin;
@@ -930,9 +936,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let isBackpass = (p.team === leftTeam) ? (targetX < p.x) : (targetX > p.x);
 
                         if (isBackpass) {
-                            targetX = bestOption.mate.x;
-                            targetY = bestOption.mate.y;
-                            bestOption.isThrough = false;
+                            targetX = bestOption.mate.x; targetY = bestOption.mate.y; bestOption.isThrough = false;
                         } else if (bestOption.isThrough) {
                             targetX += dir * 4.5; 
                         }
@@ -940,21 +944,22 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         io.to(roomCode).emit('playSound', 'kick');
                         
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
-                        let power = Math.max(2.5, Math.min(d / 4.5, 5.5)); 
+                        
+                        // [핵심 개선] 롱 스루패스가 너무 쎄서 라인 밖으로 나가는 현상 억제 (분모를 4.5 -> 5.5로 올려 파워 깎음)
+                        let powerDivider = bestOption.isThrough ? 5.5 : 4.5;
+                        let power = Math.max(2.5, Math.min(d / powerDivider, 5.0)); 
 
                         state.ball.vx = ((targetX - p.x) / d) * power;
                         state.ball.vy = ((targetY - p.y) / d) * power; 
                         
                         if (d > 20) {
                             state.ball.airTicks = Math.floor(d / 5.0);
-                            state.eventText = bestOption.isThrough ? "🎯 롱 스루패스!" : "🚀 롱 패스 전환!";
+                            state.eventText = bestOption.isThrough ? "🎯 정교한 스루패스!" : "🚀 롱 패스 전환!";
                         } else {
                             state.eventText = bestOption.isThrough ? "창의적 스루패스!" : "연계 플레이";
                         }
                         
-                        state.passTargetId = bestOption.mate.id; 
-                        state.lastPasserId = p.id; 
-                        p.cooldown = 8; 
+                        state.passTargetId = bestOption.mate.id; state.lastPasserId = p.id; p.cooldown = 8; 
                     } 
                     else {
                         let pSpeed = ((p.stats && p.stats.spd ? p.stats.spd : 80) / 100);
@@ -962,50 +967,40 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         
                         if (nearestEnemy) {
                             let inDefensiveThird = (p.team === leftTeam && state.ball.x < 35) || (p.team === rightTeam && state.ball.x > 65);
-                            let dx = p.x - nearestEnemy.x; 
-                            let dy = p.y - nearestEnemy.y; 
-                            let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                            let dx = p.x - nearestEnemy.x; let dy = p.y - nearestEnemy.y; let dist = Math.sqrt(dx*dx + dy*dy) || 1;
                             let enemyInFront = (dir === 1 && nearestEnemy.x > p.x) || (dir === -1 && nearestEnemy.x < p.x);
                             
-                            // 걷어내기 발동 조건 극강화: 아주 깊은 수비 진영에서 패스 점수가 20점도 안 될 때만 발동
                             if (inDefensiveThird && dist < 5 && (!bestOption || bestOption.score < 20)) {
-                                state.ball.vx = dir * 6.5; 
-                                state.ball.vy = (Math.random() - 0.5) * 5.0; 
-                                state.ball.airTicks = 4;
-                                state.eventText = "💥 전방 걷어내기!";
-                                p.cooldown = 6; 
+                                state.ball.vx = dir * 6.5; state.ball.vy = (Math.random() - 0.5) * 5.0; 
+                                state.ball.airTicks = 4; state.eventText = "💥 전방 걷어내기!"; p.cooldown = 6; 
                             } else {
-                                // [핵심 개선 4] 드리블 헌납 방지: 터치를 대폭 줄여 공을 발 밑에 타이트하게 붙여놓고 키핑함
-                                let evadeX = dx / dist;
-                                let evadeY = dy / dist;
+                                let evadeX = dx / dist; let evadeY = dy / dist;
                                 
                                 if (enemyInFront) {
+                                    // [핵심 개선] 정면으로 마주치고 무한 경합하는 현상 파괴
                                     let sideDir = (p.y > 50) ? -1 : 1; 
-                                    // 기존 측면 터치 강도(3.5)를 1.5로 깎아 공이 밖으로 새거나 뺏기는 걸 막음
-                                    state.ball.vx = (evadeX * 0.8) + (dir * 0.5); 
-                                    state.ball.vy = (evadeY * 0.8) + (sideDir * 1.5); 
-                                    state.eventText = wantsToHold ? "🛡️ 등지기 (키핑)" : "⚡ 짧은 측면 터치!";
+                                    // 중앙 근처면 랜덤으로 측면을 골라 뻔하게 고착화되는 현상 방지
+                                    if (Math.abs(p.y - 50) < 5) sideDir = Math.random() < 0.5 ? -1 : 1;
+                                    
+                                    // 측면(Y축)으로 강하게 꺾어서 상대가 반응하기 전에 탈출
+                                    state.ball.vx = (evadeX * 0.3) + (dir * 0.4); 
+                                    state.ball.vy = (sideDir * 3.0); 
+                                    state.eventText = wantsToHold ? "🛡️ 등지기 (키핑)" : "⚡ 측면 돌파!";
                                 } else {
                                     state.ball.vx = (evadeX * 0.8) + (dir * 1.8); 
                                     state.ball.vy = evadeY * 0.8; 
                                     state.eventText = wantsToHold ? "🛡️ 볼 지키기" : "⚡ 전진 탈압박!";
                                 }
-                                p.cooldown = 2; // 즉각적으로 다시 공을 조작하도록 쿨다운 축소 (4 -> 2)
+                                p.cooldown = 2; 
                             }
                         } else {
                             let centerDriveVy = (50 - p.y) * 0.05 + (Math.random() - 0.5);
-                            
-                            // 텅 빈 공간의 치달(길게 차고 달리기) 터치 강도도 줄여서 허무한 헌납 방지
                             if (inFinalThird && Math.random() < 0.3) {
-                                state.ball.vx = dir * pSpeed * 2.2; 
-                                state.ball.vy = centerDriveVy * 1.0; 
-                                state.eventText = "⚡ 공간 돌파!";
-                                p.cooldown = 4; 
+                                state.ball.vx = dir * pSpeed * 2.2; state.ball.vy = centerDriveVy * 1.0; 
+                                state.eventText = "⚡ 공간 돌파!"; p.cooldown = 4; 
                             } else {
-                                state.ball.vx = dir * pSpeed * 1.2; 
-                                state.ball.vy = centerDriveVy * 0.8; 
-                                state.eventText = wantsToHold ? "🛡️ 볼 키핑" : "전진 드리블";
-                                p.cooldown = 2; 
+                                state.ball.vx = dir * pSpeed * 1.2; state.ball.vy = centerDriveVy * 0.8; 
+                                state.eventText = wantsToHold ? "🛡️ 볼 키핑" : "전진 드리블"; p.cooldown = 2; 
                             }
                         }
                     }
