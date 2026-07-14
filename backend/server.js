@@ -886,13 +886,20 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         io.to(roomCode).emit('playSound', 'kick');
                         
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
-                        let power = Math.max(2.0, Math.min(d / 7.0, 3.8)); 
+                        
+                        // ★ 개선: 패스 거리(d)에 비례한 강도를 높이고, 최대 속도 캡을 6.5로 대폭 상향
+                        let power = Math.max(2.5, Math.min(d / 4.0, 6.5)); 
 
                         state.ball.vx = ((targetX - p.x) / d) * power;
                         state.ball.vy = ((targetY - p.y) / d) * power; 
                         
-                        if (bestOption.isThrough) state.eventText = "창의적 스루패스!";
-                        else state.eventText = "연계 플레이";
+                        // ★ 개선: 거리가 20 이상인 롱패스는 공을 공중에 띄워(airTicks) 중간 차단을 물리적으로 무시함
+                        if (d > 20) {
+                            state.ball.airTicks = Math.floor(d / 5.0);
+                            state.eventText = bestOption.isThrough ? "🎯 롱 스루패스!" : "🚀 롱 패스 전환!";
+                        } else {
+                            state.eventText = bestOption.isThrough ? "창의적 스루패스!" : "연계 플레이";
+                        }
                         
                         state.passTargetId = bestOption.mate.id; 
                         state.lastPasserId = p.id; 
@@ -903,9 +910,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let nearestEnemy = state.players.find(e => e.team !== p.team && getDistance(e.x, e.y, p.x, p.y) < 8);
                         
                         if (nearestEnemy) {
-                            let dx = p.x - nearestEnemy.x; let dy = p.y - nearestEnemy.y; let dist = Math.sqrt(dx*dx + dy*dy) || 1;
-                            state.ball.vx = (dx / dist) * 1.0 + (dir * 0.6); state.ball.vy = (dy / dist) * 1.0; state.eventText = "볼 키핑!";
-                            p.cooldown = 2; 
+                            // ★ 무한 경합 루프 탈출: 소극적 키핑 대신 적의 반대 방향으로 공을 길게 치고 나가는 '탈압박'
+                            let dx = p.x - nearestEnemy.x; 
+                            let dy = p.y - nearestEnemy.y; 
+                            let dist = Math.sqrt(dx*dx + dy*dy) || 1;
+                            
+                            // 밀어내는 힘(2.8)과 전방(dir)을 섞어 빈 공간으로 확실하게 도망가도록 속도 부여
+                            state.ball.vx = (dx / dist) * 2.8 + (dir * 1.5); 
+                            state.ball.vy = (dy / dist) * 2.8; 
+                            state.eventText = "⚡ 탈압박 드리블!";
+                            p.cooldown = 4; // 공을 치고 잠시 후 빠르게 쫓아감
                         } else {
                             let centerDriveVy = (50 - p.y) * 0.05 + (Math.random() - 0.5);
                             
