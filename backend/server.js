@@ -646,7 +646,26 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         p.cooldown = 4; 
                     }
                 }
-}
+            } // 터치 및 스마트 판단 if문 끝
+        }); // state.players.forEach 루프 끝
+
+        // --- 6. 아웃 및 골 판정 ---
+        if (state.ball.x <= 0) {
+            if (state.ball.y > 38 && state.ball.y < 62) handleGoal(room, 2); // TEAM 2 득점
+            else setupSetPiece(state, state.lastTouchTeam === 1 ? 'corner' : 'goal_kick', 1);
+        } 
+        else if (state.ball.x >= 100) {
+            if (state.ball.y > 38 && state.ball.y < 62) handleGoal(room, 1); // TEAM 1 득점
+            else setupSetPiece(state, state.lastTouchTeam === 2 ? 'corner' : 'goal_kick', 2);
+        } 
+        else if (state.ball.y <= 0 || state.ball.y >= 100) {
+            setupSetPiece(state, 'throw_in', state.lastTouchTeam === 1 ? 2 : 1);
+        }
+
+        // 클라이언트에게 실시간 상태 업데이트 전송
+        emitUpdate(roomCode, state);
+    }, 100); // matchInterval (setInterval) 끝
+} // startMatchPhase 함수 끝
 
 function handleGoal(room, scoringTeam) {
     room.matchState.isPaused = true;
