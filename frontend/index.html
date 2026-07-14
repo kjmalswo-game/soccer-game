@@ -255,6 +255,7 @@
             data.players.forEach(p => {
                 const pEl = document.getElementById(`match-player-${p.team}-${p.id}`);
                 if(pEl) { pEl.style.left = p.x + '%'; pEl.style.top = p.y + '%'; }
+            }); // 🚨 [수정 완료] 기존 코드에서 여기가 통째로 빠져 있어서 화면이 아예 멈췄습니다!
 
             const goalLogContainer = document.getElementById('goalLogBoard');
             if (goalLogContainer && data.goalLog) {
@@ -276,7 +277,7 @@
             const goalAlert = document.createElement('div');
             goalAlert.style.position = 'absolute';
             goalAlert.style.top = '20px';
-            goalAlert.style.right = '20px'; // 우측 상단 배치
+            goalAlert.style.right = '20px'; 
             goalAlert.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
             goalAlert.style.color = '#fff';
             goalAlert.style.padding = '15px 25px';
@@ -287,17 +288,12 @@
             goalAlert.style.zIndex = '9999';
             goalAlert.style.transition = 'opacity 0.5s ease-in-out';
         
-            // 2. 서버에서 받은 시간과 득점자 텍스트 삽입
             let teamName = data.team === 1 ? "블루팀" : "레드팀"; 
             goalAlert.innerHTML = `⚽ <b>${data.scorer}</b> 득점! <br><span style="font-size:14px; color:#ccc;">${teamName} - ${data.time}</span>`;
-        
-            // 3. 화면에 추가
             document.body.appendChild(goalAlert);
-        
-            // 4. 4초 뒤에 알림창이 서서히 사라지도록 애니메이션 처리
             setTimeout(() => {
                 goalAlert.style.opacity = '0';
-                setTimeout(() => goalAlert.remove(), 500); // 완전히 삭제
+                setTimeout(() => goalAlert.remove(), 500); 
             }, 4000);
         });
 
@@ -339,11 +335,9 @@
         });
 
         socket.on('matchEnded', (data) => {
-            // data.score 와 data.goalLog 가 들어옵니다.
             let endMessage = `<h2>경기 종료!</h2>`;
             endMessage += `<h3>최종 스코어: 블루팀 ${data.score.team1} : ${data.score.team2} 레드팀</h3><hr>`;
             
-            // 시간별 득점 기록 나열
             if (data.goalLog && data.goalLog.length > 0) {
                 endMessage += `<h4>상세 득점 기록</h4><ul style="text-align: left; max-width: 300px; margin: 0 auto;">`;
                 data.goalLog.forEach(log => {
@@ -356,11 +350,10 @@
                 endMessage += `<p>득점 없음 (0:0 무승부)</p>`;
             }
         
-            // 화면 가운데 결과창 div에 텍스트 삽입 (예시)
-            document.getElementById('resultScreen').innerHTML = endMessage;
-            document.getElementById('resultScreen').style.display = 'block';
+            // 🚨 [수정 완료] 존재하지 않는 resultScreen 대신 진짜 ID인 final-result-text 에 삽입하고 화면을 띄웁니다!
+            document.getElementById('final-result-text').innerHTML = endMessage;
+            showScreen('screen-result'); 
         });
-        
         socket.on('error', (msg) => {
             alert(msg);
         });
