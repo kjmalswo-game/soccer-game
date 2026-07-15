@@ -1,6 +1,7 @@
 {
   "settings": {
     "draftTimers": [5, 15, 30],
+    "halfTimeTimers": [10, 15, 30], 
     "halfTimeDurationRealSeconds": 15,
     "halfDurationRealSeconds": 120,
     "gameMinutesPerHalf": 45
