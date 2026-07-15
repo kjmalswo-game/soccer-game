@@ -109,6 +109,8 @@
             <p id="draft-player-stats" style="margin:0; font-size:18px;"></p>
         </div>
         <div class="draft-pitch" id="draft-pitch"></div>
+        <!-- 🎯 스킵 버튼 (기본적으로 숨겨짐) -->
+        <button id="btn-skip" onclick="skipDraftPlayer()" style="display:none; position:absolute; bottom:30px; font-size:18px; background-color:#f39c12; border:2px solid white; box-shadow:0 4px 6px rgba(0,0,0,0.5); z-index:20;"></button>
     </div>
 
     <div id="screen-match" class="screen">
@@ -183,6 +185,17 @@
                 const timerSelect = document.createElement('select'); timerSelect.id = 'timer-select';
                 gameDB.settings.draftTimers.forEach(t => { const opt = document.createElement('option'); opt.value = t; opt.innerText = `${t}초`; timerSelect.appendChild(opt); });
                 container.appendChild(timerSelect);
+
+                // 🎯 스킵 횟수 드롭다운 추가
+                const skipTitle = document.createElement('h4');
+                skipTitle.innerText = '선수 스킵 기능 (방장 전용)';
+                container.appendChild(skipTitle);
+                
+                const skipSelect = document.createElement('select'); skipSelect.id = 'skip-select';
+                [0, 1, 2, 3].forEach(s => {
+                    const opt = document.createElement('option'); opt.value = s; opt.innerText = `${s}명`; skipSelect.appendChild(opt);
+                });
+                container.appendChild(skipSelect);
             }
 
             container.innerHTML += '<h4>내 포메이션 선택</h4>';
@@ -232,7 +245,10 @@
 
         function readyToPlay() {
             const formationId = document.getElementById('formation-select').value;
-            if(isHost) socket.emit('setTimer', myRoomCode, document.getElementById('timer-select').value);
+            if(isHost) {
+                socket.emit('setTimer', myRoomCode, document.getElementById('timer-select').value);
+                socket.emit('setSkips', myRoomCode, document.getElementById('skip-select').value); // 🎯 서버로 스킵 설정 전송
+            }
             
             socket.emit('playerReady', myRoomCode, formationId);
             myFormation = gameDB.formations[formationId].positions;
@@ -253,20 +269,48 @@
             showScreen('screen-draft');
         });
 
+        // 🎯 팝업 업데이트를 재사용하기 위해 함수로 분리
+        function updateDraftPopup(player) {
+            const popup = document.getElementById('draft-popup');
+            popup.classList.remove('popup-minimized');
+            document.getElementById('draft-player-name').innerText = player.name;
+            let pDef = (player.stats.def !== undefined) ? player.stats.def : 80;
+            document.getElementById('draft-player-stats').innerText = `스피드: ${player.stats.spd} | 골결정력: ${player.stats.sht} | 패스: ${player.stats.pas} | 수비: ${pDef}`;
+            setTimeout(() => popup.classList.add('popup-minimized'), 2000);
+        }
+
+        // 🎯 스킵 버튼 UI 업데이트 함수
+        function updateSkipButton(skipsLeft, skipsTotal) {
+            const btnSkip = document.getElementById('btn-skip');
+            if (skipsTotal > 0) {
+                btnSkip.style.display = 'block';
+                btnSkip.innerText = `스킵하기 ${skipsLeft}/${skipsTotal}`;
+                if (skipsLeft <= 0) {
+                    btnSkip.disabled = true;
+                    btnSkip.style.background = 'gray';
+                } else {
+                    btnSkip.disabled = false;
+                    btnSkip.style.background = '#f39c12';
+                }
+            } else {
+                btnSkip.style.display = 'none';
+            }
+        }
+
+        // 🎯 스킵 버튼 클릭 시 서버로 전송
+        function skipDraftPlayer() {
+            socket.emit('skipPlayer', myRoomCode);
+        }
+
+        // 기존 턴 시작 로직 수정 (스킵 정보 반영)
         socket.on('draftPlayer', (data) => {
             clearInterval(timerInterval);
             currentDraftPlayer = isHost ? data.p1 : data.p2; 
             
-            const popup = document.getElementById('draft-popup');
-            popup.classList.remove('popup-minimized');
-            document.getElementById('draft-player-name').innerText = currentDraftPlayer.name;
+            updateDraftPopup(currentDraftPlayer);
             
-            // ★ 드래프트 화면: 4개 스탯(스피드, 골결정력, 패스, 수비) 순서대로 표기
-            // (만약 database.json에 def 스탯이 누락된 선수가 나오면 기본값 80으로 처리하여 에러 방지)
-            let pDef = (currentDraftPlayer.stats.def !== undefined) ? currentDraftPlayer.stats.def : 80;
-            document.getElementById('draft-player-stats').innerText = `스피드: ${currentDraftPlayer.stats.spd} | 골결정력: ${currentDraftPlayer.stats.sht} | 패스: ${currentDraftPlayer.stats.pas} | 수비: ${pDef}`;
-            
-            setTimeout(() => popup.classList.add('popup-minimized'), 2000);
+            let mySkips = isHost ? data.p1Skips : data.p2Skips;
+            updateSkipButton(mySkips, data.skipsTotal);
 
             let timeLeft = data.timeLimit; document.getElementById('draft-timer').innerText = timeLeft;
             timerInterval = setInterval(() => {
@@ -275,12 +319,24 @@
             }, 1000);
         });
 
+        // 🎯 스킵 성공 후 나에게만 새 선수가 도착했을 때
+        socket.on('draftPlayerSkipped', (data) => {
+            currentDraftPlayer = data.player;
+            updateDraftPopup(currentDraftPlayer);
+            updateSkipButton(data.skipsLeft, data.skipsTotal);
+            // 타이머는 리셋하지 않고 계속 흘러가게 둡니다!
+        });
+
         function placePlayer(slotId, slotElement) {
             if(!currentDraftPlayer || slotElement.classList.contains('player-placed')) return;
             slotElement.innerText = currentDraftPlayer.name.substring(0, 4);
             slotElement.classList.add('player-placed');
             socket.emit('playerPlaced', myRoomCode, slotId, currentDraftPlayer);
             currentDraftPlayer = null;
+            
+            // 🎯 선수 배치 완료 시 스킵 꼼수 방지
+            const btnSkip = document.getElementById('btn-skip');
+            if(btnSkip) { btnSkip.disabled = true; btnSkip.style.background = 'gray'; }
         }
 
         socket.on('autoPlaced', (slotId, playerInfo) => {
@@ -290,6 +346,10 @@
                 slotElement.classList.add('player-placed');
             }
             currentDraftPlayer = null; 
+            
+            // 🎯 자동 배치 완료 시 스킵 꼼수 방지
+            const btnSkip = document.getElementById('btn-skip');
+            if(btnSkip) { btnSkip.disabled = true; btnSkip.style.background = 'gray'; }
         });
 
         socket.on('matchStarted', (matchState) => { 
