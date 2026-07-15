@@ -42,6 +42,37 @@
         .goal-net-right { position:absolute; right:-30px; top:38%; width:27px; height:24%; background: rgba(255,255,255,0.2); border: 3px solid white; border-left: none; box-shadow: inset 0 0 10px rgba(0,0,0,0.5); z-index: 1; background-image: radial-gradient(white 15%, transparent 16%), radial-gradient(white 15%, transparent 16%); background-size: 6px 6px; background-position: 0 0, 3px 3px;}
         
         .event-highlight { color: #ff9f43; text-shadow: 1px 1px 5px black; font-size: 32px; font-weight: 900;}
+
+        .mini-pitch {
+            width: 160px; 
+            height: 220px; 
+            background: #20bf6b; 
+            border: 2px solid white;
+            position: relative; 
+            margin: 15px auto; 
+            border-radius: 5px; 
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .mini-node {
+            position: absolute; 
+            width: 22px; 
+            height: 22px; 
+            background: #eb3b5a;
+            color: white; 
+            border-radius: 50%; 
+            font-size: 9px; 
+            font-weight: bold;
+            display: flex;
+            align-items: center; 
+            justify-content: center;
+            transform: translate(-50%, -50%); 
+            border: 1.5px solid white;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+            transition: all 0.3s ease; /* 위치 이동 시 부드러운 애니메이션 효과 */
+        }
+
+        
     </style>
 </head>
 <body>
@@ -150,6 +181,42 @@
             const formationSelect = document.createElement('select'); formationSelect.id = 'formation-select';
             Object.keys(gameDB.formations).forEach(f => { const opt = document.createElement('option'); opt.value = f; opt.innerText = f; formationSelect.appendChild(opt); });
             container.appendChild(formationSelect);
+
+            // ★ 새로 추가된 부분: 미니 축구장 미리보기 영역 생성
+            const previewContainer = document.createElement('div');
+            previewContainer.className = 'mini-pitch';
+            previewContainer.id = 'formation-preview';
+            container.appendChild(previewContainer);
+
+            // ★ 새로 추가된 부분: 포메이션 변경 시 실시간으로 위치 렌더링
+            function updatePreview() {
+                const selected = formationSelect.value;
+                const positions = gameDB.formations[selected].positions;
+                const preview = document.getElementById('formation-preview');
+                preview.innerHTML = ''; // 기존 선수 초기화
+                
+                // 하프라인 및 페널티 박스 선 그리기 (디테일)
+                preview.innerHTML += `<div style="position:absolute; top:50%; left:0; width:100%; height:2px; background:rgba(255,255,255,0.4);"></div>`;
+                preview.innerHTML += `<div style="position:absolute; top:50%; left:50%; width:40px; height:40px; border:2px solid rgba(255,255,255,0.4); border-radius:50%; transform:translate(-50%, -50%);"></div>`;
+                preview.innerHTML += `<div style="position:absolute; bottom:0; left:25%; width:50%; height:15%; border:2px solid rgba(255,255,255,0.4); border-bottom:none;"></div>`;
+
+                // 선택된 포메이션의 선수들 점 찍기
+                positions.forEach(pos => {
+                    const node = document.createElement('div');
+                    node.className = 'mini-node';
+                    // 드래프트 화면과 동일한 비율과 좌표계 적용
+                    node.style.left = pos.y + '%'; 
+                    node.style.top = (100 - pos.x) + '%';
+                    node.innerText = pos.id; // CB, ST 등 포지션 이름 표시
+                    preview.appendChild(node);
+                });
+            }
+
+            // 드롭다운 메뉴를 바꿀 때마다 updatePreview 함수 실행
+            formationSelect.addEventListener('change', updatePreview);
+            
+            // 로비에 처음 들어왔을 때 기본(첫 번째) 포메이션 그려놓기
+            updatePreview();
 
             const btn = document.getElementById('btn-ready'); btn.innerText = "준비 완료"; btn.disabled = false; btn.style.background = '#0fb9b1';
             showScreen('screen-lobby');
