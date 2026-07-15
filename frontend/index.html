@@ -51,7 +51,7 @@
             
             /* ★ 핵심: 가운데 정렬을 풀고 화면 우측 중간에 고정시킵니다 */
             position: absolute; 
-            right: 8%; /* 화면 오른쪽 끝에서 8%만큼 떨어진 곳 (왼쪽으로 하려면 left: 8%; 로 변경) */
+            left: 10%; /* 화면 오른쪽 끝에서 8%만큼 떨어진 곳 (왼쪽으로 하려면 left: 8%; 로 변경) */
             top: 50%; /* 세로 기준 한가운데 */
             transform: translateY(-50%); /* 세로 중앙 정렬을 완벽하게 맞추는 마법의 코드 */
             
@@ -378,11 +378,12 @@
         });
 
         let draggedNode = null;
-        socket.on('halfTimeStarted', (duration, playersData) => {
-            showScreen('screen-halftime');
-            const hPitch = document.getElementById('halftime-pitch');
-            hPitch.querySelectorAll('.player-node').forEach(el => el.remove());
 
+        // ★ 선수들 그리는 부분을 재사용 가능하도록 함수로 분리
+        function renderHalftimePitch(playersData) {
+            const hPitch = document.getElementById('halftime-pitch');
+            hPitch.innerHTML = ''; // 기존 선수들 초기화
+            
             playersData.filter(p => p.team === myTeamId && p.role !== 'GK').forEach(player => {
                 const el = document.createElement('div');
                 el.className = 'player-node';
@@ -406,6 +407,57 @@
                 });
                 hPitch.appendChild(el);
             });
+        }
+
+        socket.on('halfTimeStarted', (duration, playersData) => {
+            showScreen('screen-halftime');
+            
+            // ★ 하프타임 화면에 포메이션 변경 UI 동적 생성
+            let formContainer = document.getElementById('halftime-formation-container');
+            if (!formContainer) {
+                const hScreen = document.getElementById('screen-halftime');
+                formContainer = document.createElement('div');
+                formContainer.id = 'halftime-formation-container';
+                formContainer.style.marginBottom = '20px';
+                formContainer.innerHTML = `
+                    <label style="font-size: 20px; font-weight: bold; color: #f1c40f;">전술 변경: </label>
+                    <select id="halftime-formation-select" style="font-size: 18px; padding: 5px 10px; border-radius: 5px; cursor: pointer;"></select>
+                `;
+                // 경기장(halftime-pitch) 바로 위에 삽입
+                hScreen.insertBefore(formContainer, document.getElementById('halftime-pitch'));
+            }
+            
+            // 포메이션 목록 채우기
+            const formSelect = document.getElementById('halftime-formation-select');
+            formSelect.innerHTML = '<option value="" disabled selected>포메이션 선택</option>';
+            Object.keys(gameDB.formations).forEach(f => {
+                const opt = document.createElement('option');
+                opt.value = f; opt.innerText = f;
+                formSelect.appendChild(opt);
+            });
+
+            // 드롭다운 변경 시 서버로 변경 요청 전송
+            formSelect.onchange = () => {
+                socket.emit('changeFormation', myRoomCode, myTeamId, formSelect.value);
+            };
+
+            // 초기 선수 배치 렌더링
+            renderHalftimePitch(playersData);
+
+            // 타이머 로직
+            let timeLeft = duration; document.getElementById('halftime-timer').innerText = timeLeft;
+            const tInt = setInterval(() => {
+                timeLeft--; document.getElementById('halftime-timer').innerText = timeLeft;
+                if(timeLeft <= 0) clearInterval(tInt);
+            }, 1000);
+        });
+
+        // ★ 서버에서 매핑된 새 위치 데이터를 받아와 즉시 새로고침
+        socket.on('formationUpdated', (teamId, playersData) => {
+            if (teamId === myTeamId) {
+                renderHalftimePitch(playersData);
+            }
+        });
 
             let timeLeft = duration; document.getElementById('halftime-timer').innerText = timeLeft;
             const tInt = setInterval(() => {
