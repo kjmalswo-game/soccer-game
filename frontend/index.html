@@ -178,88 +178,93 @@
 
         function setupLobby(code, db) {
             myRoomCode = code; gameDB = db; document.getElementById('display-code').innerText = code;
-            const container = document.getElementById('settings-container'); container.innerHTML = '';
+            const container = document.getElementById('settings-container'); 
+            container.innerHTML = ''; // 찌꺼기가 남지 않게 깔끔하게 비우고 시작
             
+            // ★ 방장(Host)일 경우에만 표시되는 설정창
             if(isHost) {
-                container.innerHTML += '<h4>제한시간 설정 (방장 전용)</h4>';
+                // 1. 드래프트 제한시간 설정
+                const title1 = document.createElement('h4'); title1.innerText = '제한시간 설정 (방장 전용)';
+                container.appendChild(title1);
+                
                 const timerSelect = document.createElement('select'); timerSelect.id = 'timer-select';
-                gameDB.settings.draftTimers.forEach(t => { const opt = document.createElement('option'); opt.value = t; opt.innerText = `${t}초`; timerSelect.appendChild(opt); });
+                gameDB.settings.draftTimers.forEach(t => { 
+                    const opt = document.createElement('option'); opt.value = t; opt.innerText = `${t}초`; 
+                    timerSelect.appendChild(opt); 
+                });
                 container.appendChild(timerSelect);
 
-                // 🎯 스킵 횟수 드롭다운 추가
-                const skipTitle = document.createElement('h4');
-                skipTitle.innerText = '선수 스킵 기능 (방장 전용)';
+                // 2. 선수 스킵 기능 설정
+                const skipTitle = document.createElement('h4'); skipTitle.innerText = '선수 스킵 기능 (방장 전용)';
                 container.appendChild(skipTitle);
                 
                 const skipSelect = document.createElement('select'); skipSelect.id = 'skip-select';
                 [0, 1, 2, 3].forEach(s => {
-                    const opt = document.createElement('option'); opt.value = s; opt.innerText = `${s}명`; skipSelect.appendChild(opt);
+                    const opt = document.createElement('option'); opt.value = s; opt.innerText = `${s}명`; 
+                    skipSelect.appendChild(opt);
                 });
                 container.appendChild(skipSelect);
 
-                // 🎯 하프타임 시간 설정 드롭다운 추가
-                const htTitle = document.createElement('h4');
-                htTitle.innerText = '하프타임 시간 (방장 전용)';
+                // 3. 하프타임 시간 설정
+                const htTitle = document.createElement('h4'); htTitle.innerText = '하프타임 시간 (방장 전용)';
                 container.appendChild(htTitle);
 
                 const htSelect = document.createElement('select'); htSelect.id = 'halftime-select';
-                // db에서 추가한 배열(10, 15, 30)을 사용합니다.
                 let htTimers = gameDB.settings.halfTimeTimers || [10, 15, 30]; 
                 htTimers.forEach(t => { 
-                    const opt = document.createElement('option'); 
-                    opt.value = t; 
-                    opt.innerText = `${t}초`; 
+                    const opt = document.createElement('option'); opt.value = t; opt.innerText = `${t}초`; 
                     if (t === 15) opt.selected = true; // 기본값 15초
                     htSelect.appendChild(opt); 
                 });
                 container.appendChild(htSelect);
             }
 
-            container.innerHTML += '<h4>내 포메이션 선택</h4>';
+            // ★ 방장, 게스트 모두에게 표시되는 포메이션 선택창
+            const formTitle = document.createElement('h4'); 
+            formTitle.innerText = '내 포메이션 선택';
+            container.appendChild(formTitle);
+            
             const formationSelect = document.createElement('select'); formationSelect.id = 'formation-select';
-            Object.keys(gameDB.formations).forEach(f => { const opt = document.createElement('option'); opt.value = f; opt.innerText = f; formationSelect.appendChild(opt); });
+            Object.keys(gameDB.formations).forEach(f => { 
+                const opt = document.createElement('option'); opt.value = f; opt.innerText = f; 
+                formationSelect.appendChild(opt); 
+            });
             container.appendChild(formationSelect);
 
-            // ★ 새로 추가된 부분: 미니 축구장 미리보기 영역 생성
+            // ★ 미니 축구장 미리보기
             const previewContainer = document.createElement('div');
             previewContainer.className = 'mini-pitch';
             previewContainer.id = 'formation-preview';
             container.appendChild(previewContainer);
 
-            // ★ 새로 추가된 부분: 포메이션 변경 시 실시간으로 위치 렌더링
             function updatePreview() {
                 const selected = formationSelect.value;
                 const positions = gameDB.formations[selected].positions;
                 const preview = document.getElementById('formation-preview');
-                preview.innerHTML = ''; // 기존 선수 초기화
+                preview.innerHTML = ''; 
                 
-                // 하프라인 및 페널티 박스 선 그리기 (디테일)
                 preview.innerHTML += `<div style="position:absolute; top:50%; left:0; width:100%; height:2px; background:rgba(255,255,255,0.4);"></div>`;
                 preview.innerHTML += `<div style="position:absolute; top:50%; left:50%; width:40px; height:40px; border:2px solid rgba(255,255,255,0.4); border-radius:50%; transform:translate(-50%, -50%);"></div>`;
                 preview.innerHTML += `<div style="position:absolute; bottom:0; left:25%; width:50%; height:15%; border:2px solid rgba(255,255,255,0.4); border-bottom:none;"></div>`;
 
-                // 선택된 포메이션의 선수들 점 찍기
                 positions.forEach(pos => {
                     const node = document.createElement('div');
                     node.className = 'mini-node';
-                    // 드래프트 화면과 동일한 비율과 좌표계 적용
                     node.style.left = pos.y + '%'; 
                     node.style.top = (100 - pos.x) + '%';
-                    node.innerText = pos.id; // CB, ST 등 포지션 이름 표시
+                    node.innerText = pos.id; 
                     preview.appendChild(node);
                 });
             }
 
-            // 드롭다운 메뉴를 바꿀 때마다 updatePreview 함수 실행
             formationSelect.addEventListener('change', updatePreview);
-            
-            // 로비에 처음 들어왔을 때 기본(첫 번째) 포메이션 그려놓기
             updatePreview();
 
-            const btn = document.getElementById('btn-ready'); btn.innerText = "준비 완료"; btn.disabled = false; btn.style.background = '#0fb9b1';
+            const btn = document.getElementById('btn-ready'); 
+            btn.innerText = "준비 완료"; btn.disabled = false; btn.style.background = '#0fb9b1';
             showScreen('screen-lobby');
         }
-
+        
         function readyToPlay() {
             const formationId = document.getElementById('formation-select').value;
             if(isHost) {
