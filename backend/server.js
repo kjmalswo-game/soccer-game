@@ -95,7 +95,8 @@ io.on('connection', (socket) => {
         const roomCode = generateRoomCode();
         rooms[roomCode] = { 
             players: { [socket.id]: { id: 'player1', ready: false, team: [] } }, 
-            settings: { timer: db.settings.draftTimers[1], formation: null }, 
+            // 🎯 settings에 skips 추가 (기본 0)
+            settings: { timer: db.settings.draftTimers[1], skips: 0, formation: null }, 
             state: 'lobby', 
             availablePlayers: [...db.players] 
         };
@@ -142,6 +143,12 @@ io.on('connection', (socket) => {
             socket.to(roomCode).emit('timerUpdated', timerValue); 
         } 
     });
+    // 🎯 방장이 스킵 횟수를 변경할 때 받는 이벤트 추가
+    socket.on('setSkips', (roomCode, skipsValue) => {
+        if (rooms[roomCode]) {
+            rooms[roomCode].settings.skips = parseInt(skipsValue);
+        }
+    });
 
     socket.on('playerReady', (roomCode, formationId) => {
         const room = rooms[roomCode]; 
@@ -180,6 +187,43 @@ io.on('connection', (socket) => {
             room.draftCount++; 
             nextDraftTurn(roomCode); 
         }
+    });
+
+    socket.on('skipPlayer', (roomCode) => {
+        const room = rooms[roomCode];
+        if (!room || !room.currentDraft || room.state !== 'draft') return;
+        
+        const pData = room.players[socket.id];
+        if (!pData) return;
+
+        const isP1 = pData.id === 'player1';
+        const hasPlaced = isP1 ? room.currentDraft.p1Placed : room.currentDraft.p2Placed;
+
+        // 이미 선수를 배치했거나, 남은 스킵 횟수가 없으면 무시
+        if (hasPlaced || pData.skipsLeft <= 0) return;
+
+        // 스킵 횟수 차감
+        pData.skipsLeft--;
+
+        // 새로운 선수 뽑기
+        function pullRandomPlayer() {
+            if(room.availablePlayers.length === 0) return null;
+            const idx = Math.floor(Math.random() * room.availablePlayers.length);
+            return room.availablePlayers.splice(idx, 1)[0];
+        }
+        const newPlayer = pullRandomPlayer();
+        if (!newPlayer) return;
+
+        // 현재 턴의 내 선수 데이터를 교체 (나중에 playerPlaced에서 검증할 때 쓰임)
+        if (isP1) room.currentDraft.p1 = newPlayer;
+        else room.currentDraft.p2 = newPlayer;
+
+        // 방 전체가 아닌, '스킵을 누른 해당 플레이어'에게만 새로운 선수를 전송
+        socket.emit('draftPlayerSkipped', {
+            player: newPlayer,
+            skipsLeft: pData.skipsLeft,
+            skipsTotal: room.settings.skips
+        });
     });
 
     socket.on('swapPlayers', (roomCode, teamId, id1, id2) => {
@@ -260,14 +304,6 @@ io.on('connection', (socket) => {
     });
 });
 
-function startDraftPhase(roomCode) {
-    const room = rooms[roomCode]; 
-    room.state = 'draft'; 
-    room.draftCount = 0;
-    io.to(roomCode).emit('startDraft'); 
-    nextDraftTurn(roomCode);
-}
-
 function nextDraftTurn(roomCode) {
     const room = rooms[roomCode];
     if (room.draftCount >= 10 || room.availablePlayers.length < 2) { 
@@ -283,7 +319,20 @@ function nextDraftTurn(roomCode) {
     
     const p1Player = pullRandomPlayer(), p2Player = pullRandomPlayer();
     room.currentDraft = { p1: p1Player, p2: p2Player, answers: 0, p1Placed: false, p2Placed: false };
-    io.to(roomCode).emit('draftPlayer', { p1: p1Player, p2: p2Player, timeLimit: room.settings.timer });
+    
+    // 🎯 양 팀의 현재 남은 스킵 횟수를 함께 전송
+    const pIds = Object.keys(room.players);
+    const p1Id = pIds.find(id => room.players[id].id === 'player1');
+    const p2Id = pIds.find(id => room.players[id].id === 'player2');
+    
+    io.to(roomCode).emit('draftPlayer', { 
+        p1: p1Player, 
+        p2: p2Player, 
+        p1Skips: p1Id ? room.players[p1Id].skipsLeft : 0,
+        p2Skips: p2Id ? room.players[p2Id].skipsLeft : 0,
+        skipsTotal: room.settings.skips || 0,
+        timeLimit: room.settings.timer 
+    });
     
     const currentTurn = room.draftCount; 
     room.draftTimeout = setTimeout(() => { 
