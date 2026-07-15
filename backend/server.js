@@ -735,23 +735,25 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 let isDM = p.posId.includes('DM');
                                 let isWing = p.posId.includes('LM') || p.posId.includes('RM') || p.posId.includes('LW') || p.posId.includes('RW');
 
+                                // 🏃 공이 하프라인을 넘기 전이라도, 어느 정도 전진하면 바로 침투 시작!
+                                let earlyRunZone = (p.team === leftTeam && refBallX > 35) || (p.team === rightTeam && refBallX < 65);
+
                                 if (isDM) {
                                     let dmAdvance = (p.team === leftTeam) ? refBallX - 12 : refBallX + 12;
                                     targetX = inAttackingHalf ? refBallX - (dir * 12) : p.baseX + (dir * Math.max(0, (p.team === leftTeam ? dmAdvance - p.baseX : p.baseX - dmAdvance) * 0.8));
                                     targetY = p.baseY + organicY;
                                 } else {
-                                    if (inAttackingHalf) {
-                                        targetX = targetGoalX - (dir * (isWing ? 8 : 15));
-                                        if (isWing) {
-                                            // 🏃 윙어가 중앙으로 들어오는 비율을 줄이고(0.3 -> 0.85) 터치라인 근처로 넓게 벌립니다.
-                                            let stayWideY = 50 + (p.baseY - 50) * 0.85; 
-                                            targetY = stayWideY + organicY;
-                                        } else {
-                                            targetY = p.baseY + (Math.random() - 0.5) * 15; 
-                                        }
+                                    // 🏃 윙어는 earlyRunZone이 켜지면 무조건 공간으로 스프린트!
+                                    if (earlyRunZone && isWing) {
+                                        targetX = targetGoalX - (dir * 8);
+                                        let stayWideY = 50 + (p.baseY - 50) * 0.85; 
+                                        targetY = stayWideY + organicY;
                                         p.isMakingRun = true;
-                                    }
-                                    else {
+                                    } else if (inAttackingHalf && !isWing) {
+                                        targetX = targetGoalX - (dir * 15);
+                                        targetY = p.baseY + (Math.random() - 0.5) * 15; 
+                                        p.isMakingRun = true;
+                                    } else {
                                         let spaceX = refBallX + (dir * 10); 
                                         let spaceY = p.baseY + (state.ball.y - p.baseY) * 0.35;
                                         let bestY = spaceY;
@@ -778,10 +780,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 }
                             }
                             else if (p.role === 'FW') {
-                                if (inAttackingHalf) {
+                                // 🏃 FW(스트라이커) 역시 earlyRunZone부터 일찍 침투 시작!
+                                let earlyRunZone = (p.team === leftTeam && refBallX > 35) || (p.team === rightTeam && refBallX < 65);
+                                if (earlyRunZone) {
                                     let runDepth = (p.stats && p.stats.spd > 85) ? 2 : 5;
                                     targetX = targetGoalX - (dir * runDepth); 
-                                    // 🏃 FW들도 무조건 중앙(50)이 아니라, 자기 포메이션 위치(baseY)를 기준으로 벌려서 침투합니다.
                                     targetY = 50 + (p.baseY - 50) * 0.75 + (Math.random() - 0.5) * 15; 
                                     p.isMakingRun = true;
                                     
@@ -963,7 +966,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     let distToGoal = getDistance(p.x, p.y, targetGoalX, 50);
                     let shotBlocked = false;
-                    if (distToGoal > 15) {
+                    // 🎯 거리 18 이상(중거리 슛)일 때만 수비수 블로킹을 체크합니다. 가까우면 무시합니다.
+                    if (distToGoal > 18) {
                         state.players.forEach(e => {
                             if (e.team !== p.team && e.role !== 'GK') {
                                 if (getDistance(p.x, p.y, e.x, e.y) < 6 && 
@@ -983,7 +987,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     let inOpponentBox = (p.team === leftTeam && p.x > 84 && p.y > 20 && p.y < 80) || (p.team === rightTeam && p.x < 16 && p.y > 20 && p.y < 80);
                     let angleToGoal = Math.abs(p.y - 50); 
-                    // 🎯 중거리 슛 허용 거리를 대폭 늘립니다 (기존 28/24/20 -> 35/30/26)
                     let maxShotDist = (pSht >= 85) ? 35 : (pSht >= 80 ? 30 : 26); 
                     
                     let teammatesAhead = 0;
@@ -998,13 +1001,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     let shootProb = 0;
 
                     if (!shotBlocked) {
-                        if (inOpponentBox) {
+                        // 🎯 핵심: 페널티 박스 안이거나, 페널티 아크(거리 22 이하 & 정면)면 무조건 슈팅(1.0)
+                        if (inOpponentBox || (distToGoal <= 22 && angleToGoal < 20)) {
                             canShoot = true;
-                            // 🎯 페널티 박스 안에서는 각도가 좁아도 거의 무조건(80~100%) 슈팅을 때리도록 상향
-                            shootProb = (angleToGoal > 35) ? 0.8 : 1.0; 
+                            shootProb = 1.0; 
                         } else if (distToGoal < maxShotDist) {
                             if (angleToGoal < 20) {
-                                // 🎯 박스 밖 정면(파이널 서드)일 때 슛 확률을 2배 이상 펌핑 (중거리 슛 적극성)
                                 shootProb = (teammatesAhead === 0) ? 1.0 : 0.7; 
                                 canShoot = true;
                             } else if (angleToGoal < 32) {
@@ -1013,7 +1015,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             }
                         }
                     }
-
+                    
                     if (canShoot && Math.random() < shootProb) {
                         io.to(roomCode).emit('playSound', 'kick');
                         // 슈팅 파워
@@ -1074,7 +1076,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 }
 
                                 if (m.isMakingRun && minEnemyDistToM > 4 && !laneBlocked) {
-                                    score += inAttackingHalf ? (pPas * 12) : (pPas * 8); 
+                                    let isMWing = m.y < 25 || m.y > 75; // 받는 사람이 측면(윙어)인지 확인
+                                    if (isMWing) {
+                                        score += 3000; // 🎯 윙어 침투 시 엄청난 가산점 (가장 먼저 패스 찌름)
+                                    } else {
+                                        score += inAttackingHalf ? (pPas * 12) : (pPas * 8); 
+                                    }
                                     isThrough = true;
                                 }
                             } else {
@@ -1156,7 +1163,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             targetX = bestOption.mate.x; targetY = bestOption.mate.y; 
                             bestOption.isThrough = false; bestOption.isCross = false;
                         } else if (bestOption.isThrough || bestOption.isCross) { 
-                            targetX += dir * (pPas > 85 ? 6.0 : 4.0); 
+                            // 🎯 스루패스 시 선수의 스피드에 맞춰 공간으로 훨씬 길고 깊게 찔러줍니다. (기존 6.0 -> 최대 14.0)
+                            let leadDist = (bestOption.mate.stats && bestOption.mate.stats.spd > 85) ? 14.0 : 9.0;
+                            targetX += dir * leadDist; 
                         }
 
                         io.to(roomCode).emit('playSound', 'kick');
