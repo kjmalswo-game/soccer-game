@@ -1315,9 +1315,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let nextVy = centerDriveVy * 0.8; 
 
                         if (isWingerDrive) {
-                            nextVx = dir * (pSpd / 100) * 1.4; 
+                            // 🎯 측면 터치라인 돌파 시 앞으로 쳐놓는 길이를 대폭 단축 (기존 1.4 -> 1.05)
+                            nextVx = dir * (pSpd / 100) * 1.02; 
                             if (inFinalThird) {
-                                nextVy = (p.y < 50) ? 1.8 : -1.8; 
+                                // 🎯 페널티 박스 쪽으로 꺾어 들어갈 때(컷인사이드) 대각선으로 쳐놓는 길이도 단축 (기존 1.8 -> 1.2) 둘다바꿔야됨.
+                                nextVy = (p.y < 50) ? 1.05 : -1.05; 
                                 state.eventText = "⚡ 측면 침투!";
                             } else {
                                 nextVy = 0; 
