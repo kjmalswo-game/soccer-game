@@ -604,7 +604,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         } else {
                             // 수비하는 팀 (골킥 막는 팀): 자기 진영에서 대형을 갖추고 세컨볼 경합 준비
                             if (p.role === 'FW') { targetX = 50 + (dir * 14) + organicX; targetY = p.baseY; } // 하프라인 선상에서 세컨볼 노림
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 13) + organicX; targetY = p.baseY; } // 자기 진영 낮은 위치
+                            else if (p.role === 'MF') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; } // 자기 진영 낮은 위치
                             else if (p.role === 'DF') { targetX = 50 - (dir * 25) + organicX; targetY = p.baseY; } // 최후방 수비 대형 유지
                         }
                     }
@@ -617,7 +617,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         } else {
                             // 수비하는 팀 (빠르게 복귀)
                             if (p.role === 'FW') { targetX = 50 + (dir * 17) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 5) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = 50 + (dir * 8) + organicX; targetY = p.baseY; }
                             else if (p.role === 'DF') { targetX = 50 - (dir * 15) + organicX; targetY = p.baseY; }
                         }
                     }
