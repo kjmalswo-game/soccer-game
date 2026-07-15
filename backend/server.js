@@ -830,7 +830,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     if (state.isKickoff) {
                         if (p.team === state.kickoffTeam) {
                             let mates = state.players.filter(m => m.team === p.team && m.role !== 'GK' && m.id !== p.id);
-                            // 백패스를 위해 자신보다 뒤에 있는 선수 위주로 필터링
                             let backMates = mates.filter(m => (dir === 1 ? m.x < p.x : m.x > p.x));
                             if(backMates.length === 0) backMates = mates;
                             let targetMate = backMates[Math.floor(Math.random() * Math.min(3, backMates.length))]; 
@@ -878,12 +877,58 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     let inFinalThird = (p.team === leftTeam && p.x > 65) || (p.team === rightTeam && p.x < 35);
                     let inAttackingHalf = (p.team === leftTeam && p.x > 50) || (p.team === rightTeam && p.x < 50);
                     let inOwnHalf = !inAttackingHalf;
+
+                    let inOpponentBox = (p.team === leftTeam && p.x > 84 && p.y > 20 && p.y < 80) || (p.team === rightTeam && p.x < 16 && p.y > 20 && p.y < 80);
+                    let angleToGoal = Math.abs(p.y - 50); 
+                    let maxShotDist = (pSht >= 85) ? 28 : (pSht >= 80 ? 24 : 20); 
                     
-                    // ★ 적의 압박 강도를 정밀 측정하여 백패스 및 드리블 불가(탈취 직전) 상황 판단
+                    let teammatesAhead = 0;
+                    state.players.forEach(m => {
+                        if (m.team === p.team && m.id !== p.id && m.role !== 'GK') {
+                            let forwardDist = (p.team === leftTeam) ? (m.x - p.x) : (p.x - m.x);
+                            if (forwardDist > 0 && getDistance(p.x, p.y, m.x, m.y) < 25) teammatesAhead++;
+                        }
+                    });
+
+                    let canShoot = false;
+                    let shootProb = 0;
+
+                    if (!shotBlocked) {
+                        if (inOpponentBox) {
+                            canShoot = true;
+                            shootProb = (angleToGoal > 25) ? 0.3 : 1.0; 
+                        } else if (distToGoal < maxShotDist) {
+                            if (angleToGoal < 15) {
+                                shootProb = (teammatesAhead === 0) ? 0.9 : (pSht / 100) * 0.4; 
+                                canShoot = true;
+                            } else if (angleToGoal < 25) {
+                                shootProb = (pSht / 100) * 0.1; 
+                                canShoot = true;
+                            }
+                        }
+                    }
+
+                    if (canShoot && Math.random() < shootProb) {
+                        io.to(roomCode).emit('playSound', 'kick');
+                        let power = distToGoal < 15 ? 4.5 : 7.0 + ((pSht - 70) * 0.15);
+                        let aimY = 50 + (Math.random() - 0.5) * (14 - (pSht/10));
+                        
+                        let dx = targetGoalX - p.x, dy = aimY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1; 
+                        state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
+                        
+                        state.ball.shotTicks = distToGoal < 15 ? 8 : 15; 
+                        p.cooldown = 12; 
+                        if (distToGoal > 22) state.eventText = "🚀 통쾌한 중거리 슛!";
+                        else if (angleToGoal > 20) state.eventText = "🔥 사각지대 슈팅!";
+                        else state.eventText = "⚽ 골문 앞 슈팅!";
+                        return;
+                    }
+
+                    // ★ 1. 압박 기준치 대폭 축소 (너무 쉽게 백패스 금지)
                     let enemies = state.players.filter(e => e.team !== p.team && e.role !== 'GK');
                     let nearestEnemyDist = enemies.length > 0 ? Math.min(...enemies.map(e => getDistance(p.x, p.y, e.x, e.y))) : 999;
-                    let isHeavilyPressed = nearestEnemyDist < 5.0; // 뺏기기 직전의 매우 강한 압박
-                    let isPressed = nearestEnemyDist < 12.0;       // 일반적인 접근 압박
+                    let isHeavilyPressed = nearestEnemyDist < 3.5; // 진짜 뺏기기 직전의 초근접 압박
+                    let isPressed = nearestEnemyDist < 8.0;        // 일반적인 접근 방해
 
                     let passOptions = [];
                     state.players.forEach(m => {
@@ -906,9 +951,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let score = 0; let isThrough = false; let isCutback = false; let isCross = false;
                             if (laneBlocked) score -= 3000; 
 
-                            // ★ 전진 패스와 백패스(후진) 상황 완벽 분리
+                            // 전진 패스와 백패스(후진) 철저히 분리
                             if (forwardDist > -2) {
-                                // 전진 패스
+                                // 전진 패스는 가산점 팍팍
                                 if (inAttackingHalf) score += (forwardDist * (pPas > 85 ? 12.0 : 8.0)); 
                                 else score += (forwardDist * (pPas > 85 ? 5.5 : 4.0)); 
 
@@ -924,46 +969,40 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     isThrough = true;
                                 }
                             } else {
-                                // 후진 패스 (백패스) 판단
+                                // 후진 패스 (백패스)
                                 let isDeep = (p.team === leftTeam && p.x > 85) || (p.team === rightTeam && p.x < 15);
                                 let isReceiverInBox = (p.team === leftTeam && m.x > 75 && m.x < p.x) || (p.team === rightTeam && m.x < 25 && m.x > p.x);
                                 let isReceiverCentral = m.y > 30 && m.y < 70;
 
                                 if (isDeep && isReceiverInBox && isReceiverCentral) {
-                                    score += 6000; // 절대적인 공격 찬스: 컷백
+                                    score += 6000; 
                                     isCutback = true;
                                 } else if (inAttackingHalf) {
-                                    // 상대 진영에서의 기본 백패스는 강력히 억제
+                                    // ★ 백패스 가산점을 확 낮춰 우선순위를 바닥으로 만듦
                                     let backpassScore = -5000; 
                                     
-                                    // 1, 2, 4. 상대에게 뺏기기 직전이거나 전방 공간이 없어 드리블이 불가할 때
-                                    if (isHeavilyPressed && minEnemyDistToM > 6 && !laneBlocked) {
-                                        backpassScore = 400; // 급하게 안전한 동료에게 내주기
+                                    if (isHeavilyPressed && minEnemyDistToM > 8 && !laneBlocked) {
+                                        backpassScore = 80; // 살기 위한 최후의 수단
                                     }
-                                    // 보조: 적당한 압박을 받을 때 완전히 텅 빈 후방 동료에게 리사이클링
-                                    else if (isPressed && minEnemyDistToM > 15 && !laneBlocked) {
-                                        backpassScore = 200; 
+                                    else if (isPressed && minEnemyDistToM > 18 && !laneBlocked && Math.random() < 0.2) {
+                                        backpassScore = 40; 
                                     }
-                                    // 3. 백패스를 받는 선수가 더 좋은 공격 찬스를 만들 수 있을 때 (넓은 시야를 가진 중앙 MF)
-                                    else if (minEnemyDistToM > 12 && Math.abs(m.y - 50) < 25 && m.role === 'MF') {
-                                        backpassScore = 150; 
+                                    else if (minEnemyDistToM > 15 && Math.abs(m.y - 50) < 20 && m.role === 'MF' && Math.random() < 0.15) {
+                                        backpassScore = 30; 
                                     }
-                                    // 5. 동료가 좋은 위치로 쇄도(침투)하고 있을 때
-                                    else if (m.isMakingRun && minEnemyDistToM > 8) {
-                                        backpassScore = 100;
+                                    else if (m.isMakingRun && minEnemyDistToM > 10) {
+                                        backpassScore = 20;
                                     }
 
                                     score += backpassScore;
                                 } else {
-                                    // 자기 진영에서의 빌드업 백패스
-                                    if (isPressed && minEnemyDistToM > 10 && !laneBlocked) score += 300; 
+                                    if (isPressed && minEnemyDistToM > 10 && !laneBlocked) score += 100; 
                                     else score -= 1500;
                                 }
                             }
 
                             score -= (dist * (pPas > 85 ? 0.3 : 1.0)); 
                             score += (minEnemyDistToM * 5); 
-                            // 무의미한 탁구(핑퐁) 패스를 막기 위해 바로 직전에 패스준 선수에게 다시 주는 것 강력 억제
                             if (state.lastPasserId === m.id) score -= 2000; 
                             score += (Math.random() * (pPas * 0.8));
 
@@ -985,13 +1024,17 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         p.cooldown = 0; state.eventText = "볼 컨트롤"; return; 
                     }
 
-                    let isFastWinger = (p.role === 'MF' && pSpd >= 85 && Math.random() < 0.6);
-                    let wantsToHold = (p.role === 'FW' && distToGoal < 25) || isFastWinger; 
+                    // ★ 2. 윙어 돌파 특화 및 무조건 드리블 유도
+                    let isWingerPos = (p.y < 22 || p.y > 78);
+                    // 측면에서 공을 잡은 선수는 80% 확률로 무적권 치고 달리는 모드 발동
+                    let isWingerDrive = isWingerPos && inAttackingHalf && Math.random() < 0.8; 
+                    let wantsToHold = (p.role === 'FW' && distToGoal < 25) || isWingerDrive; 
                     
-                    let passThreshold = wantsToHold ? (bestOption && (bestOption.isThrough || bestOption.isCross || bestOption.isCutback) ? 30 : 90) : 20;
+                    // 윙어 돌파 모드일 경우 패스 커트라인을 150으로 확 올려 일반 패스 자체를 무시함
+                    let passThreshold = wantsToHold ? (bestOption && (bestOption.isThrough || bestOption.isCross || bestOption.isCutback) ? 35 : 150) : 25;
 
-                    // ★ 전방 옵션도 없고 뺏기기 직전(isHeavilyPressed)이면 패스 컷트라인을 확 낮춰 무조건 백패스라도 돌리게 만듦
-                    if (isHeavilyPressed) passThreshold = 0; 
+                    // 진짜 뺏기기 직전이고, 윙어 돌파 중이 아니면 컷트라인을 낮춰 간신히 백패스
+                    if (isHeavilyPressed && !isWingerDrive) passThreshold = 10; 
 
                     if (bestOption && bestOption.score > passThreshold) {
                         let errorMargin = Math.max(0.05, (100 - pPas) * 0.025); 
@@ -1020,7 +1063,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             state.ball.airTicks = Math.floor(d / 4.0);
                             state.eventText = "🚀 크로스!";
                         } else if (isBackpass) {
-                            // 위기 상황에 따라 출력되는 이벤트 텍스트 차별화
                             state.eventText = isHeavilyPressed ? "🛡️ 위기 탈출 백패스" : "안전한 템포 조절";
                         } else if (d > 20) {
                             state.ball.airTicks = Math.floor(d / 5.0);
@@ -1032,7 +1074,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         state.passTargetId = bestOption.mate.id; state.lastPasserId = p.id; p.cooldown = 8; 
                     } 
                     else {
-                        // 스마트 회피 및 박스 침투(컷인사이드) 드리블 로직
                         let threats = state.players.filter(e => e.team !== p.team && e.role !== 'GK');
                         let imminentThreat = threats.find(e => {
                             let isForward = (dir === 1 && e.x > p.x) || (dir === -1 && e.x < p.x);
@@ -1043,7 +1084,19 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let centerDriveVy = (50 - p.y) * 0.05 + (Math.random() - 0.5);
                         let nextVy = centerDriveVy * 0.5;
 
-                        if (imminentThreat) {
+                        // ★ 윙어 폭풍 돌파 전용 움직임
+                        if (isWingerDrive) {
+                            nextVx = dir * (pSpd / 100) * 1.8; // 전진 속도 극대화
+                            if (inFinalThird) {
+                                nextVy = (p.y < 50) ? 1.5 : -1.5; // 박스 안으로 침투 (컷인사이드)
+                                state.eventText = "⚡ 측면 파괴 침투!";
+                            } else {
+                                nextVy = 0; // 터치라인을 따라 일직선으로 치달
+                                state.eventText = "⚡ 터치라인 돌파!";
+                            }
+                            p.cooldown = 1; 
+                        } 
+                        else if (imminentThreat) {
                             let spaceAbove = imminentThreat.y - 0; 
                             let spaceBelow = 100 - imminentThreat.y;
                             let dodgeDir = spaceAbove > spaceBelow ? -1 : 1; 
@@ -1057,13 +1110,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             p.cooldown = 0;
                         } else {
                             if (inFinalThird && Math.random() < (pSpd / 100) * 0.7) {
-                                // ★ 윙어들이 직선으로 달리지 않고 골대를 향해 맹렬하게 꺾어 들어옵니다.
                                 if (p.y < 25) nextVy = 1.8;
                                 else if (p.y > 75) nextVy = -1.8;
                                 else nextVy = centerDriveVy * 0.8;
 
                                 nextVx = dir * (pSpd / 100) * 1.6; 
-                                state.eventText = (p.y < 25 || p.y > 75) ? "⚡ 박스 침투 드리블!" : "⚡ 폭발적 공간 돌파!"; 
+                                state.eventText = "⚡ 폭발적 공간 돌파!"; 
                                 p.cooldown = 1; 
                             } else {
                                 nextVx = dir * (pSpd / 100) * 1.0; 
