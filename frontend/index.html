@@ -196,6 +196,23 @@
                     const opt = document.createElement('option'); opt.value = s; opt.innerText = `${s}명`; skipSelect.appendChild(opt);
                 });
                 container.appendChild(skipSelect);
+
+                // 🎯 하프타임 시간 설정 드롭다운 추가
+                const htTitle = document.createElement('h4');
+                htTitle.innerText = '하프타임 시간 (방장 전용)';
+                container.appendChild(htTitle);
+
+                const htSelect = document.createElement('select'); htSelect.id = 'halftime-select';
+                // db에서 추가한 배열(10, 15, 30)을 사용합니다.
+                let htTimers = gameDB.settings.halfTimeTimers || [10, 15, 30]; 
+                htTimers.forEach(t => { 
+                    const opt = document.createElement('option'); 
+                    opt.value = t; 
+                    opt.innerText = `${t}초`; 
+                    if (t === 15) opt.selected = true; // 기본값 15초
+                    htSelect.appendChild(opt); 
+                });
+                container.appendChild(htSelect);
             }
 
             container.innerHTML += '<h4>내 포메이션 선택</h4>';
@@ -247,7 +264,8 @@
             const formationId = document.getElementById('formation-select').value;
             if(isHost) {
                 socket.emit('setTimer', myRoomCode, document.getElementById('timer-select').value);
-                socket.emit('setSkips', myRoomCode, document.getElementById('skip-select').value); // 🎯 서버로 스킵 설정 전송
+                socket.emit('setSkips', myRoomCode, document.getElementById('skip-select').value);
+                socket.emit('setHalfTime', myRoomCode, document.getElementById('halftime-select').value); // 🎯 서버로 하프타임 설정 전송
             }
             
             socket.emit('playerReady', myRoomCode, formationId);
