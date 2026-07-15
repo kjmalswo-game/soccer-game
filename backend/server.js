@@ -1044,8 +1044,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     let distToGoal = getDistance(p.x, p.y, targetGoalX, 50);
                     let shotBlocked = false;
-                    // 🎯 거리 18 이상(중거리 슛)일 때만 수비수 블로킹을 체크합니다. 가까우면 무시합니다.
-                    if (distToGoal > 18) {
+
+                    if (distToGoal > 15) {
                         state.players.forEach(e => {
                             if (e.team !== p.team && e.role !== 'GK') {
                                 if (getDistance(p.x, p.y, e.x, e.y) < 6 && 
@@ -1065,7 +1065,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     let inOpponentBox = (p.team === leftTeam && p.x > 84 && p.y > 20 && p.y < 80) || (p.team === rightTeam && p.x < 16 && p.y > 20 && p.y < 80);
                     let angleToGoal = Math.abs(p.y - 50); 
-                    let maxShotDist = (pSht >= 85) ? 35 : (pSht >= 80 ? 30 : 26); 
+                    let maxShotDist = (pSht >= 85) ? 24 : (pSht >= 80 ? 20 : 16); 
                     
                     let teammatesAhead = 0;
                     state.players.forEach(m => {
