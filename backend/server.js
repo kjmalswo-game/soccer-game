@@ -105,21 +105,23 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinRoom', (roomCode) => {
-        if (roomCode === '000') {
+        // 🎯 000(랜덤 즉시 시작)과 111(드래프트 즉시 시작) 모두 테스트 방 생성 처리
+        if (roomCode === '000' || roomCode === '111') {
             const formationKeys = Object.keys(db.formations);
             const randomAiFormation = formationKeys[Math.floor(Math.random() * formationKeys.length)];
             
-            const testRoomCode = 'TEST_' + generateRoomCode(); 
+            const testRoomCode = (roomCode === '000' ? 'TEST000_' : 'TEST111_') + generateRoomCode(); 
             rooms[testRoomCode] = {
                 players: {
                     'dummy_ai': { id: 'player1', ready: true, team: [], formation: randomAiFormation },
                     [socket.id]: { id: 'player2', ready: false, team: [], formation: null }
                 },
-                // 🎯 테스트방(000)은 에러 방지를 위해 하프타임을 15초로 강력하게 고정합니다.
-                settings: { timer: db.settings.draftTimers[1], skips: 0, halfTimeDuration: 15, formation: null },
+                // 🎯 111 모드에서는 스킵 기능도 원활히 테스트할 수 있도록 기본적으로 스킵 3회를 부여합니다!
+                settings: { timer: db.settings.draftTimers[1], skips: (roomCode === '111' ? 3 : 0), halfTimeDuration: 15, formation: null },
                 state: 'lobby',
                 availablePlayers: [...db.players],
-                isTestMode: true 
+                isTestMode: roomCode === '000', // 000 모드는 드래프트 몽땅 생략 플래그
+                isDraftTestMode: roomCode === '111' // 111 모드는 혼자 드래프트 진행 플래그
             };
             socket.join(testRoomCode);
             socket.emit('roomJoined', testRoomCode, db); 
@@ -340,6 +342,25 @@ function nextDraftTurn(roomCode) {
     const p1Player = pullRandomPlayer(), p2Player = pullRandomPlayer();
     room.currentDraft = { p1: p1Player, p2: p2Player, answers: 0, p1Placed: false, p2Placed: false };
     
+    // 🎯 [111 모드 핵심] 상대방(AI)은 카드가 뽑히자마자 0초 만에 자기 진영 빈자리에 조용히 꽂아 넣고 대기합니다.
+    // 따라서 유저가 카드를 선택하는 즉시 턴이 넘어가게 됩니다!
+    if (room.isDraftTestMode) {
+        const aiId = Object.keys(room.players).find(id => room.players[id].id === 'player1');
+        const aiData = room.players[aiId];
+        if (aiData) {
+            const filledSlots = aiData.team.map(t => parseInt(t.slot));
+            let emptySlot = -1;
+            for(let i = 0; i < 10; i++) { 
+                if(!filledSlots.includes(i)) { emptySlot = i; break; } 
+            }
+            if(emptySlot !== -1 && p1Player) {
+                aiData.team.push({ slot: emptySlot, player: p1Player });
+            }
+            room.currentDraft.p1Placed = true;
+            room.currentDraft.answers++;
+        }
+    }
+
     // 🎯 양 팀의 현재 남은 스킵 횟수를 함께 전송
     const pIds = Object.keys(room.players);
     const p1Id = pIds.find(id => room.players[id].id === 'player1');
