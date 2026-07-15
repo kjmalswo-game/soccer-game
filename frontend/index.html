@@ -262,6 +262,7 @@
             document.getElementById('draft-player-name').innerText = currentDraftPlayer.name;
             
             // ★ 수정된 부분: 패스(pas) 스탯 표시 추가!
+            let pDef = currentDraftPlayer.stats.def ? currentDraftPlayer.stats.def : 80;
             document.getElementById('draft-player-stats').innerText = `스피드: ${currentDraftPlayer.stats.spd} | 슈팅: ${currentDraftPlayer.stats.sht} | 패스: ${currentDraftPlayer.stats.pas}`;
             
             setTimeout(() => popup.classList.add('popup-minimized'), 2000);
