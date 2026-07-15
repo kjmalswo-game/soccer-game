@@ -102,7 +102,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('joinRoom', (roomCode) => {
-        if (roomCode === '000000') {
+        if (roomCode === '000') {
             const testRoomCode = 'TEST_' + generateRoomCode(); 
             rooms[testRoomCode] = {
                 players: {
@@ -539,14 +539,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         // 이를 이용해 '50 - (dir * 오프셋)' 공식을 쓰면, 어느 팀이든 무조건 하프라인(50)을 넘지 않고 자기 진영에 위치하게 됨
                         if (p.team === state.possessionTeam) {
                             // 공격하는 팀 (골킥 차는 팀): 무조건 하프라인을 넘지 않고 자기 진영에 대기
-                            if (p.role === 'FW') { targetX = 50 - (dir * 2) + organicX; targetY = p.baseY; } // 하프라인 바로 뒤에서 롱볼 대비
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 15) + organicX; targetY = p.baseY; } // 수비와 공격수 사이에서 빌드업 준비
-                            else { targetX = 50 - (dir * 32) + organicX; targetY = p.baseY; } // 키퍼 앞쪽 페널티박스 외곽에 수비라인 형성
+                            if (p.role === 'FW') { targetX = 50 - (dir * 5) + organicX; targetY = p.baseY; } // 하프라인 바로 뒤에서 롱볼 대비
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 18) + organicX; targetY = p.baseY; } // 수비와 공격수 사이에서 빌드업 준비
+                            else { targetX = 50 - (dir * 35) + organicX; targetY = p.baseY; } // 키퍼 앞쪽 페널티박스 외곽에 수비라인 형성
                         } else {
                             // 수비하는 팀 (골킥 막는 팀): 자기 진영에서 대형을 갖추고 세컨볼 경합 준비
-                            if (p.role === 'FW') { targetX = 50 - (dir * 5) + organicX; targetY = p.baseY; } // 하프라인 선상에서 세컨볼 노림
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 22) + organicX; targetY = p.baseY; } // 자기 진영 낮은 위치
-                            else if (p.role === 'DF') { targetX = 50 - (dir * 35) + organicX; targetY = p.baseY; } // 최후방 수비 대형 유지
+                            if (p.role === 'FW') { targetX = 50 - (dir * 10) + organicX; targetY = p.baseY; } // 하프라인 선상에서 세컨볼 노림
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 27) + organicX; targetY = p.baseY; } // 자기 진영 낮은 위치
+                            else if (p.role === 'DF') { targetX = 50 - (dir * 40) + organicX; targetY = p.baseY; } // 최후방 수비 대형 유지
                         }
                     }
                     else {
