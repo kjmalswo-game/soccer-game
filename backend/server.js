@@ -489,7 +489,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if (state.ball.shotTicks && state.ball.shotTicks > 0) state.ball.shotTicks--;
                 
                 let speedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
-                let maxSpeedSq = (state.ball.shotTicks > 0) ? 81 : 25; 
+                let maxSpeedSq = (state.ball.shotTicks > 0) ? 100 : 25; 
                 
                 if (speedSq > maxSpeedSq) { 
                     let speed = Math.sqrt(speedSq);
@@ -630,11 +630,25 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     if (p.role === 'GK') {
                         let myGoalX = p.team === leftTeam ? 0 : 100;
-                        let bdx = state.ball.x - myGoalX; let bdy = state.ball.y - 50;
-                        let bdist = Math.sqrt(bdx*bdx + bdy*bdy) || 1;
-                        let advance = Math.max(2, 12 - (bdist * 0.15));
-                        targetX = myGoalX + (bdx / bdist) * advance;
-                        targetY = 50 + (bdy / bdist) * advance;
+                        // 날아오는 공이 슈팅이고 우리 쪽 골대를 향하는지 판별
+                        let isShotTargetingMe = state.ball.shotTicks > 0 && ((p.team === leftTeam && state.ball.vx < 0) || (p.team === rightTeam && state.ball.vx > 0));
+
+                        if (isShotTargetingMe) {
+                            targetX = myGoalX + (p.team === leftTeam ? 3 : -3); 
+                            // 공의 x축 속도를 이용해 골키퍼 위치까지 도달하는 시간 계산
+                            let timeToReach = Math.abs((state.ball.x - targetX) / (state.ball.vx || 1));
+                            // 예상되는 도착 Y좌표로 급격하게 타겟 설정
+                            let predictedY = state.ball.y + (state.ball.vy * timeToReach);
+                            targetY = predictedY;
+                            p.isDiving = true; // 다이빙 플래그 켜기
+                        } else {
+                            p.isDiving = false;
+                            let bdx = state.ball.x - myGoalX; let bdy = state.ball.y - 50;
+                            let bdist = Math.sqrt(bdx*bdx + bdy*bdy) || 1;
+                            let advance = Math.max(2, 12 - (bdist * 0.15));
+                            targetX = myGoalX + (bdx / bdist) * advance;
+                            targetY = 50 + (bdy / bdist) * advance;
+                        }
 
                         if (p.team === leftTeam) targetX = Math.max(2, Math.min(15, targetX));
                         else targetX = Math.max(85, Math.min(98, targetX));
@@ -861,7 +875,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 let moveSpeed = (pSpd / 100) * 0.85; 
                 if (isPressing || state.passTargetId === p.id || p.isMakingRun) moveSpeed *= 1.25; 
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
-                if (state.phase !== 'play') moveSpeed *= 5.0; 
+                if (state.phase !== 'play') moveSpeed *= 5.0;
+                // 골키퍼 반응속도
+                // 2.0은 평소보다 3배 빠르게 몸을 날린다는 뜻입니다.
+                // 대포알 슛을 따라가게 하려면 이 수치를 4.0, 5.0 등으로 확 올려주세요.
+                if (p.role === 'GK' && p.isDiving) moveSpeed *= 2.0; // 다이빙 시 폭발적인 속도로 몸을 날림
 
                 if (p.stunTicks && p.stunTicks > 0) {
                     p.stunTicks--;
@@ -881,7 +899,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
             // --- 5. 스마트 상황 판단 ---
             state.players.forEach(p => {
-                let touchRadius = p.role === 'GK' ? 3.0 : 2.5; 
+                // 4.0가 현재 다이빙 시 팔을 뻗는 범위입니다.
+                // 슈팅을 너무 못 막는다 싶으면 이 수치를 5.5나 6.5로 늘려주세요. 블랙홀처럼 빨아들여 막습니다.
+                let touchRadius = p.role === 'GK' ? (state.ball.shotTicks > 0 ? 4.0 : 3.0) : 2.5;
                 let distToBallAct = getDistance(p.x, p.y, state.ball.x, state.ball.y);
                 let isBallInAir = (state.ball.airTicks && state.ball.airTicks > 0);
                 let dir = (p.team === leftTeam) ? 1 : -1;
@@ -915,8 +935,23 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     if (p.role === 'GK') {
                         let isInBox = Math.abs(p.x - (p.team === leftTeam ? 0 : 100)) < 20 && p.y > 20 && p.y < 80;
                         if (isInBox && state.phase === 'play' && state.setPieceTimer <= 0) {
-                            state.phase = 'gk_hold'; state.gkHolder = p; state.setPieceTimer = 15;
-                            state.ball.vx = 0; state.ball.vy = 0; state.ball.x = p.x; state.ball.y = p.y; state.eventText = "키퍼 선방!"; p.cooldown = 20;
+                            // 0.4는 45% 확률로 공을 쳐내고(루즈볼 유도), 55% 확률로 안전하게 잡는다는 뜻입니다.
+                            // 0.7로 바꾸면 70% 확률로 공을 쳐내서 루즈볼(세컨볼) 상황이 더 자주 발생해 박진감이 넘치게 됩니다.
+                            if (state.ball.shotTicks > 0 && Math.random() < 0.45) {
+                                io.to(roomCode).emit('playSound', 'kick');
+                                state.ball.vx = dir * (3 + Math.random() * 4);
+                                state.ball.vy = (Math.random() - 0.5) * 10;
+                                state.ball.shotTicks = 0;
+                                p.cooldown = 5;
+                                state.eventText = "🧤 슈퍼 세이브 (펀칭)!";
+                            } else {
+                                // 안정적인 캐칭
+                                state.phase = 'gk_hold'; state.gkHolder = p; state.setPieceTimer = 15;
+                                state.ball.vx = 0; state.ball.vy = 0; state.ball.x = p.x; state.ball.y = p.y; 
+                                state.eventText = state.ball.shotTicks > 0 ? "🧤 엄청난 선방 (캐칭)!" : "키퍼 선방!"; 
+                                state.ball.shotTicks = 0;
+                                p.cooldown = 20;
+                            }
                         } else {
                             io.to(roomCode).emit('playSound', 'kick'); state.ball.vx = dir * 6.0; state.ball.vy = (p.y > 50) ? 3.0 : -3.0; p.cooldown = 15;
                         }
@@ -975,18 +1010,21 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     if (canShoot && Math.random() < shootProb) {
                         io.to(roomCode).emit('playSound', 'kick');
-                        let power = distToGoal < 15 ? 4.5 : 7.0 + ((pSht - 70) * 0.15);
-                        let aimY = 50 + (Math.random() - 0.5) * (14 - (pSht/10));
-                        
+                        // 슈팅 파워
+                        // distToGoal < 15 ? 6.0 : 9.5 부분의 숫자를 조절하세요.
+                        // 6.0은 근거리 슈팅 파워, 9.5는 중거리 슈팅 기본 파워입니다.
+                        // 이 숫자를 8.0, 12.0 등으로 올리면 대포알 슛이 나갑니다.
+                        let power = distToGoal < 15 ? 6.0 : 8 + ((pSht - 70) * 0.25);
+                        // 구석을 노리는 궤적 AI (골대 Y 범위는 38 ~ 62)
+                        // 위쪽 구석을 쏠지 아래쪽 구석을 쏠지 결정
+                        let cornerTarget = (Math.random() > 0.5) ? 1 : -1; 
+                        // 스탯이 높을수록 골대 양 끝(11~12 언저리)을 정교하게 찌름
+                        let offsetSpread = 11 - (pSht > 85 ? (Math.random() * 2) : (Math.random() * 6));
+                        let aimY = 50 + (cornerTarget * offsetSpread);
                         let dx = targetGoalX - p.x, dy = aimY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1; 
                         state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
-                        
-                        state.ball.shotTicks = distToGoal < 15 ? 8 : 15; 
-                        p.cooldown = 12; 
-                        if (distToGoal > 22) state.eventText = "🚀 통쾌한 중거리 슛!";
-                        else if (angleToGoal > 20) state.eventText = "🔥 사각지대 슈팅!";
-                        else state.eventText = "⚽ 골문 앞 슈팅!";
-                        return;
+                        // 슛팅 강도에 비례해 비행 시간을 조절하여 빠르게 꽂히게 설정
+                        state.ball.shotTicks = distToGoal < 15 ? 8 : 15;
                     }
 
                     // ★ 1. 압박 기준치 대폭 축소 (너무 쉽게 백패스 금지)
