@@ -199,7 +199,8 @@ io.on('connection', (socket) => {
         
         // 각 팀의 진영 방향에 맞게 목표 좌표 설정
         let targetCoords = positions.map(pos => {
-            let bx = (teamId === 1) ? pos.x : 100 - pos.x;
+            // 🎯 버그 수정: 매치 구장(절반) 비율에 맞게 pos.x를 2로 나눠주어야 화면을 뚫고 날아가지 않습니다!
+            let bx = (teamId === 1) ? pos.x / 2 : 100 - (pos.x / 2);
             let by = (teamId === 1) ? pos.y : 100 - pos.y;
             return { id: pos.id, x: bx, y: by, assigned: false };
         });
@@ -316,7 +317,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
         const playerIds = Object.keys(room.players);
         const p1Data = room.players[playerIds[0]], p2Data = room.players[playerIds[1]];
         const p1Formation = db.formations[p1Data.formation].positions, p2Formation = db.formations[p2Data.formation].positions;
-        const gkStats = { spd: 85, sht: 85, pas: 80 }; 
+        const gkStats = { spd: 85, sht: 85, pas: 85, def: 85 };
 
         room.matchState = {
             ticks: 0, half: 1, score: { team1: 0, team2: 0 }, 
@@ -416,7 +417,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                         if (bestMate) {
                             let d = getDistance(p.x, p.y, bestMate.x, bestMate.y) || 1;
-                            let passPower = 6.5; 
+                            let passPower = 4.5; // 🎯 골키퍼 패스 강도 하향 (기존 6.5)
                             state.ball.vx = ((bestMate.x - p.x) / d) * passPower; 
                             state.ball.vy = ((bestMate.y - p.y) / d) * passPower;
                             state.passTargetId = bestMate.id; 
@@ -444,7 +445,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             
                             if(target) {
                                 let dist = getDistance(state.ball.x, state.ball.y, target.x, target.y) || 1;
-                                state.ball.vx = ((target.x - state.ball.x) / dist) * 3.5; state.ball.vy = ((target.y - state.ball.y) / dist) * 3.5;
+                                state.ball.vx = ((target.x - state.ball.x) / dist) * 2.5; state.ball.vy = ((target.y - state.ball.y) / dist) * 2.5; // 🎯 스로인 강도 하향
                                 state.passTargetId = target.id;
                                 state.lastPasserId = state.throwerId; 
                                 if (dist > 15) { state.ball.airTicks = Math.max(2, Math.floor(dist / 2.2)); state.eventText = "🙌 롱 스로인!"; }
@@ -904,8 +905,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                             let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
                                             let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
                                             
-                                            let pScore = pSpeed + (Math.random() * 30);
-                                            let oScore = oSpeed + (Math.random() * 30);
+                                            // 🎯 몸싸움/수비(def) 스탯 추가: 데이터베이스에 없으면 기본값 80 자동 부여
+                                            let pDef = (p.stats && p.stats.def) ? p.stats.def : 80;
+                                            let oDef = (other.stats && other.stats.def) ? other.stats.def : 80;
+                                            
+                                            // 🎯 밸런스 최적화: 스피드 40% + 몸싸움(수비) 60% 비율로 합산하여 경합 점수 산정
+                                            let pScore = (pSpeed * 0.3) + (pDef * 0.7) + (Math.random() * 30);
+                                            let oScore = (oSpeed * 0.3) + (oDef * 0.7) + (Math.random() * 30);
 
                                             if (Math.random() < 0.20 || (oScore > pScore + 10 && !pHasBall)) {
                                                 state.ball.vx = (Math.random() - 0.5) * 6; 
@@ -1298,8 +1304,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                         io.to(roomCode).emit('playSound', 'kick');
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
-                        let powerDivider = (bestOption.isThrough || bestOption.isCross) ? 5.0 : 4.5;
-                        let power = Math.max(2.5, Math.min(d / powerDivider, 5.5)); 
+                        // 🎯 패스 속도 하향: 나누는 값(Divider)을 키워 속도를 줄이고, 최대 파워(5.5 -> 4.0)도 낮춤
+                        let powerDivider = (bestOption.isThrough || bestOption.isCross) ? 6.5 : 5.5;
+                        let power = Math.max(2.0, Math.min(d / powerDivider, 4.0));
 
                         state.ball.vx = ((targetX - p.x) / d) * power; state.ball.vy = ((targetY - p.y) / d) * power; 
                         
