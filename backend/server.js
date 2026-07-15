@@ -743,13 +743,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     if (inAttackingHalf) {
                                         targetX = targetGoalX - (dir * (isWing ? 8 : 15));
                                         if (isWing) {
-                                            let cutInsideY = 50 + (p.baseY - 50) * 0.3; 
-                                            targetY = cutInsideY + organicY;
+                                            // 🏃 윙어가 중앙으로 들어오는 비율을 줄이고(0.3 -> 0.85) 터치라인 근처로 넓게 벌립니다.
+                                            let stayWideY = 50 + (p.baseY - 50) * 0.85; 
+                                            targetY = stayWideY + organicY;
                                         } else {
-                                            targetY = p.baseY + (Math.random() - 0.5) * 20; 
+                                            targetY = p.baseY + (Math.random() - 0.5) * 15; 
                                         }
                                         p.isMakingRun = true;
-                                    } else {
+                                    }
+                                    else {
                                         let spaceX = refBallX + (dir * 10); 
                                         let spaceY = p.baseY + (state.ball.y - p.baseY) * 0.35;
                                         let bestY = spaceY;
@@ -779,7 +781,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 if (inAttackingHalf) {
                                     let runDepth = (p.stats && p.stats.spd > 85) ? 2 : 5;
                                     targetX = targetGoalX - (dir * runDepth); 
-                                    targetY = 50 + (Math.random() - 0.5) * 25; 
+                                    // 🏃 FW들도 무조건 중앙(50)이 아니라, 자기 포메이션 위치(baseY)를 기준으로 벌려서 침투합니다.
+                                    targetY = 50 + (p.baseY - 50) * 0.75 + (Math.random() - 0.5) * 15; 
                                     p.isMakingRun = true;
                                     
                                     if (dir === 1 && targetX >= offsideLine) targetX = offsideLine - 1.0;
@@ -980,7 +983,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     let inOpponentBox = (p.team === leftTeam && p.x > 84 && p.y > 20 && p.y < 80) || (p.team === rightTeam && p.x < 16 && p.y > 20 && p.y < 80);
                     let angleToGoal = Math.abs(p.y - 50); 
-                    let maxShotDist = (pSht >= 85) ? 28 : (pSht >= 80 ? 24 : 20); 
+                    // 🎯 중거리 슛 허용 거리를 대폭 늘립니다 (기존 28/24/20 -> 35/30/26)
+                    let maxShotDist = (pSht >= 85) ? 35 : (pSht >= 80 ? 30 : 26); 
                     
                     let teammatesAhead = 0;
                     state.players.forEach(m => {
@@ -996,13 +1000,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     if (!shotBlocked) {
                         if (inOpponentBox) {
                             canShoot = true;
-                            shootProb = (angleToGoal > 25) ? 0.3 : 1.0; 
+                            // 🎯 페널티 박스 안에서는 각도가 좁아도 거의 무조건(80~100%) 슈팅을 때리도록 상향
+                            shootProb = (angleToGoal > 35) ? 0.8 : 1.0; 
                         } else if (distToGoal < maxShotDist) {
-                            if (angleToGoal < 15) {
-                                shootProb = (teammatesAhead === 0) ? 0.9 : (pSht / 100) * 0.4; 
+                            if (angleToGoal < 20) {
+                                // 🎯 박스 밖 정면(파이널 서드)일 때 슛 확률을 2배 이상 펌핑 (중거리 슛 적극성)
+                                shootProb = (teammatesAhead === 0) ? 1.0 : 0.7; 
                                 canShoot = true;
-                            } else if (angleToGoal < 25) {
-                                shootProb = (pSht / 100) * 0.1; 
+                            } else if (angleToGoal < 32) {
+                                shootProb = 0.4; 
                                 canShoot = true;
                             }
                         }
