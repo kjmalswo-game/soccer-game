@@ -952,7 +952,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 
                 let pSpd = (p.stats && p.stats.spd) ? p.stats.spd : 80;
                 let moveSpeed = (pSpd / 100) * 0.85; 
-                if (isPressing || state.passTargetId === p.id || p.isMakingRun) moveSpeed *= 1.25; 
+                // 🏃‍♂️ 선수 스프린트 속도 대폭 상향 (치달 및 공간 침투)
+                if (ballCarrier && p.id === ballCarrier.id) {
+                    moveSpeed *= 1.7; // 🎯 공을 잡은 상태의 돌파 속도를 미친 듯이 끌어올립니다.
+                } else if (isPressing || state.passTargetId === p.id || p.isMakingRun) {
+                    moveSpeed *= 1.4; // 🎯 일반 침투 및 압박 스프린트 속도도 상향 (기존 1.25 -> 1.4)
+                }
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
                 if (state.phase !== 'play') moveSpeed *= 5.0;
                 // 골키퍼 반응속도
@@ -1300,19 +1305,18 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                         // ★ 윙어 폭풍 돌파 전용 움직임
                         if (isWingerDrive) {
-                            // 🎯 터치가 너무 길어지지 않도록 스피드를 2.0으로 조절 (공을 발에 더 붙임)
-                            nextVx = dir * (pSpd / 100) * 2.0; 
+                            // 🎯 터치 길이를 대폭 줄여서 선수가 빨라진 발로 공을 품고 달리게 합니다. (2.0 -> 1.4)
+                            nextVx = dir * (pSpd / 100) * 1.4; 
                             if (inFinalThird) {
-                                nextVy = (p.y < 50) ? 2.5 : -2.5; 
+                                nextVy = (p.y < 50) ? 1.8 : -1.8; // 대각선 터치도 부드럽게 축소
                                 state.eventText = "⚡ 측면 침투!";
                             } else {
                                 nextVy = 0; 
                                 state.eventText = "⚡ 돌파!";
                             }
                             p.cooldown = 1; 
-                        } 
+                        }
                         else if (imminentThreat) {
-                            // ... (회피 기동 코드는 그대로 둡니다) ...
                             let spaceAbove = imminentThreat.y - 0; 
                             let spaceBelow = 100 - imminentThreat.y;
                             let dodgeDir = spaceAbove > spaceBelow ? -1 : 1; 
@@ -1320,22 +1324,22 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (p.y < 15) dodgeDir = 1;
                             if (p.y > 85) dodgeDir = -1;
 
-                            nextVy = dodgeDir * 2.5; 
-                            nextVx = dir * (pSpd / 100) * 1.2; 
+                            nextVy = dodgeDir * 2.0; // 수비수 회피 반경 안정화
+                            nextVx = dir * (pSpd / 100) * 1.0; 
                             state.eventText = wantsToHold ? "🛡️ 공간 확보" : "회피!";
                             p.cooldown = 0;
                         } else {
                             if (inFinalThird && Math.random() < (pSpd / 100) * 0.7) {
-                                if (p.y < 25) nextVy = 2.5;
-                                else if (p.y > 75) nextVy = -2.5;
+                                if (p.y < 25) nextVy = 1.8;
+                                else if (p.y > 75) nextVy = -1.8;
                                 else nextVy = centerDriveVy * 1.2;
-
-                                // 🎯 일반 공간 돌파 시에도 터치 길이를 1.8 정도로 다듬어 줍니다.
-                                nextVx = dir * (pSpd / 100) * 1.8; 
+                                
+                                // 🎯 일반 공간 돌파 시 터치 길이도 짧고 날카롭게 조절 (1.8 -> 1.2)
+                                nextVx = dir * (pSpd / 100) * 1.2; 
                                 state.eventText = "폭발적 공간 돌파!"; 
-                                p.cooldown = 1;
+                                p.cooldown = 1; 
                             } else {
-                                nextVx = dir * (pSpd / 100) * 1.5; // 일반 필드 드리블 주력 상향 (기존 1.0 -> 1.5)
+                                nextVx = dir * (pSpd / 100) * 0.9; // 일반 걷는 드리블 속도 안정화
                                 nextVy = centerDriveVy * 0.6; 
                                 state.eventText = "전진 드리블"; 
                                 p.cooldown = 0; 
