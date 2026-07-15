@@ -451,43 +451,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             } else { state.ball.vx = dir * 2.5; state.ball.vy = 0; }
                         }
                         else if (state.phase === 'corner') {
-                        let cAttTeam = state.possessionTeam;
-                        let cDir = (cAttTeam === leftTeam) ? 1 : -1;
-                        let attackGoalX = (cAttTeam === leftTeam) ? 100 : 0; // 공격해야 할 상대방 골대 위치
-                        let defendGoalX = (p.team === leftTeam) ? 0 : 100;   // 지켜야 할 우리 팀 골대 위치
-                        let defDir = (p.team === leftTeam) ? 1 : -1;
-
-                        if (p.team === cAttTeam) {
-                            // ⚔️ 공격팀 (코너킥 차는 팀) 전술 배치
-                            if (p.role === 'FW') {
-                                // 공격수: 골대 바로 앞(6야드 박스) 헤더 경합을 위해 빽빽하게 밀집
-                                targetX = attackGoalX - (cDir * 6);
-                                targetY = 50 + (Math.random() - 0.5) * 15;
-                            } else if (p.role === 'MF') {
-                                // 미드필더: 페널티 스폿 주변 및 아크 정면에서 흘러나오는 세컨볼 및 컷백(중거리 슛) 대기
-                                targetX = attackGoalX - (cDir * 16);
-                                targetY = 50 + (p.id % 2 === 0 ? 12 : -12);
-                            } else {
-                                // 수비수: 상대 역습 차단을 위해 하프라인 후방에 대기
-                                // (💡팁: 만약 키 큰 센터백을 박스 안으로 올리고 싶다면 targetX = attackGoalX - (cDir * 8); 로 변경하세요)
-                                targetX = 50 - (cDir * 10);
-                                targetY = p.baseY;
-                            }
-                        } else {
-                            // 🛡️ 수비팀 (코너킥 막는 팀) 전술 배치
-                            if (p.role === 'FW') {
-                                // 공격수: 수비 가담을 완전히 풀고 하프라인 부근에서 롱패스를 받아 역습(카운터) 준비
-                                targetX = 50 - (defDir * 5); 
-                                targetY = p.baseY;
-                            } else if (p.role === 'MF') {
-                                // 미드필더: 페널티 박스 외곽에서 상대 미드필더들의 중거리 슛 견제 및 루즈볼 차단
-                                targetX = defendGoalX + (defDir * 18);
-                                targetY = 50 + (p.id % 2 === 0 ? 15 : -15);
-                            } else {
-                                // 수비수: 골대 앞 6야드 박스 안에 지역 방어벽(일명 '버스') 촘촘하게 형성
-                                targetX = defendGoalX + (defDir * 5);
-                                targetY = 50 + (Math.random() - 0.5) * 20;
-                            }
+                            let targetX = (state.possessionTeam === leftTeam) ? 90 : 10;
+                            let targetY = 50 + (Math.random() - 0.5) * 15;
+                            let dist = getDistance(state.ball.x, state.ball.y, targetX, targetY) || 1;
+                            state.ball.vx = ((targetX - state.ball.x) / dist) * 4.8; state.ball.vy = ((targetY - state.ball.y) / dist) * 4.8;
+                            state.ball.airTicks = Math.max(4, Math.floor(dist / 4.0));
+                            state.lastPasserId = state.kickerId; 
+                            state.eventText = "🎯 코너킥!";
                         }
                         // ★ 완전 무결한 골킥 로직: 불필요한 p.team 등 참조 에러 유발 코드 원천 삭제
                         else if (state.phase === 'goal_kick') {
@@ -681,6 +651,39 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 // 최후방 수비: 중앙 페널티 박스 앞을 견고하게 차단
                                 targetX = bx + (dir * 12);
                                 targetY = p.baseY * 0.95;
+                            }
+                        }
+                    }
+                    else if (state.phase === 'corner') {
+                        let cAttTeam = state.possessionTeam;
+                        let cDir = (cAttTeam === leftTeam) ? 1 : -1;
+                        let attackGoalX = (cAttTeam === leftTeam) ? 100 : 0; // 공격해야 할 상대방 골대 위치
+                        let defendGoalX = (p.team === leftTeam) ? 0 : 100;   // 지켜야 할 우리 팀 골대 위치
+                        let defDir = (p.team === leftTeam) ? 1 : -1;
+
+                        if (p.team === cAttTeam) {
+                            // ⚔️ 공격팀 (코너킥 차는 팀) 전술 배치
+                            if (p.role === 'FW') {
+                                targetX = attackGoalX - (cDir * 6);
+                                targetY = 50 + (Math.random() - 0.5) * 15;
+                            } else if (p.role === 'MF') {
+                                targetX = attackGoalX - (cDir * 16);
+                                targetY = 50 + (p.id % 2 === 0 ? 12 : -12);
+                            } else {
+                                targetX = 50 - (cDir * 10);
+                                targetY = p.baseY;
+                            }
+                        } else {
+                            // 🛡️ 수비팀 (코너킥 막는 팀) 전술 배치
+                            if (p.role === 'FW') {
+                                targetX = 50 - (defDir * 5); 
+                                targetY = p.baseY;
+                            } else if (p.role === 'MF') {
+                                targetX = defendGoalX + (defDir * 18);
+                                targetY = 50 + (p.id % 2 === 0 ? 15 : -15);
+                            } else {
+                                targetX = defendGoalX + (defDir * 5);
+                                targetY = 50 + (Math.random() - 0.5) * 20;
                             }
                         }
                     }
