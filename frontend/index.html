@@ -351,7 +351,7 @@
 
         socket.on('goalScored', (data) => {
             const popup = document.getElementById('goal-popup');
-            popup.innerText = `TEAM ${data.team} GOAL!!!`;
+            popup.innerText = `${data.team}팀 득점!!!`;
             popup.style.display = 'block';
             popup.style.animation = 'none'; popup.offsetHeight; popup.style.animation = null;
             setTimeout(() => { popup.style.display = 'none'; }, 2800);
