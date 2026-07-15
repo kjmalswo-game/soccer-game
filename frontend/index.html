@@ -459,13 +459,6 @@
             }
         });
 
-            let timeLeft = duration; document.getElementById('halftime-timer').innerText = timeLeft;
-            const tInt = setInterval(() => {
-                timeLeft--; document.getElementById('halftime-timer').innerText = timeLeft;
-                if(timeLeft <= 0) clearInterval(tInt);
-            }, 1000);
-        });
-
         // ★ 결과창: 승리 팀 텍스트 및 상세 득점 기록 완벽 구현 구역
         socket.on('matchEnded', (data) => {
             let team1Score = data.score.team1;
