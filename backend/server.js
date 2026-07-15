@@ -188,6 +188,58 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('changeFormation', (roomCode, teamId, formationId) => {
+        const room = rooms[roomCode];
+        if (!room || !room.matchState || !db.formations[formationId]) return;
+
+        let state = room.matchState;
+        // 새로운 포메이션의 좌표값 가져오기
+        let positions = JSON.parse(JSON.stringify(db.formations[formationId].positions));
+        let teamPlayers = state.players.filter(p => p.team === teamId && p.role !== 'GK');
+        
+        // 각 팀의 진영 방향에 맞게 목표 좌표 설정
+        let targetCoords = positions.map(pos => {
+            let bx = (teamId === 1) ? pos.x : 100 - pos.x;
+            let by = (teamId === 1) ? pos.y : 100 - pos.y;
+            return { id: pos.id, x: bx, y: by, assigned: false };
+        });
+
+        // 1. 모든 선수와 모든 새 자리 사이의 거리(Dist) 계산
+        let pairs = [];
+        teamPlayers.forEach(p => {
+            targetCoords.forEach((t, tIndex) => {
+                let dist = Math.sqrt(Math.pow(p.baseX - t.x, 2) + Math.pow(p.baseY - t.y, 2));
+                pairs.push({ player: p, targetIndex: tIndex, dist: dist });
+            });
+        });
+
+        // 2. 거리가 가장 짧은 순서대로 정렬
+        pairs.sort((a, b) => a.dist - b.dist);
+
+        // 3. 가장 가까운 자리부터 중복 없이 차례대로 선수 배정 (자동 매핑 알고리즘)
+        let assignedIds = new Set();
+        pairs.forEach(pair => {
+            let t = targetCoords[pair.targetIndex];
+            // 아직 자리를 못 잡은 선수이고, 빈자리일 경우 배정
+            if (!assignedIds.has(pair.player.id) && !t.assigned) {
+                pair.player.baseX = t.x;
+                pair.player.baseY = t.y;
+                pair.player.posId = t.id; // 포지션 이름(CB, ST 등) 변경
+                
+                // 바뀐 위치에 맞춰서 AI 롤(수비수, 미드필더, 공격수)도 업데이트
+                if (t.id.includes('B')) pair.player.role = 'DF';
+                else if (t.id.includes('M')) pair.player.role = 'MF';
+                else if (t.id.includes('S') || t.id.includes('W') || t.id.includes('F')) pair.player.role = 'FW';
+
+                assignedIds.add(pair.player.id);
+                t.assigned = true;
+            }
+        });
+
+        // 바뀐 위치 데이터를 해당 방의 클라이언트들에게 즉시 전송
+        io.to(roomCode).emit('formationUpdated', teamId, state.players);
+    });
+
     socket.on('disconnect', () => {
         for (const roomCode in rooms) {
             const room = rooms[roomCode];
