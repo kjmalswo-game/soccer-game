@@ -261,9 +261,10 @@
             popup.classList.remove('popup-minimized');
             document.getElementById('draft-player-name').innerText = currentDraftPlayer.name;
             
-            // ★ 수정된 부분: 패스(pas) 스탯 표시 추가!
-            let pDef = currentDraftPlayer.stats.def ? currentDraftPlayer.stats.def : 80;
-            document.getElementById('draft-player-stats').innerText = `스피드: ${currentDraftPlayer.stats.spd} | 슈팅: ${currentDraftPlayer.stats.sht} | 패스: ${currentDraftPlayer.stats.pas}`;
+            // ★ 드래프트 화면: 4개 스탯(스피드, 골결정력, 패스, 수비) 순서대로 표기
+            // (만약 database.json에 def 스탯이 누락된 선수가 나오면 기본값 80으로 처리하여 에러 방지)
+            let pDef = (currentDraftPlayer.stats.def !== undefined) ? currentDraftPlayer.stats.def : 80;
+            document.getElementById('draft-player-stats').innerText = `스피드: ${currentDraftPlayer.stats.spd} | 골결정력: ${currentDraftPlayer.stats.sht} | 패스: ${currentDraftPlayer.stats.pas} | 수비: ${pDef}`;
             
             setTimeout(() => popup.classList.add('popup-minimized'), 2000);
 
