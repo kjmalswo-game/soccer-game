@@ -252,7 +252,10 @@
             const popup = document.getElementById('draft-popup');
             popup.classList.remove('popup-minimized');
             document.getElementById('draft-player-name').innerText = currentDraftPlayer.name;
-            document.getElementById('draft-player-stats').innerText = `스피드: ${currentDraftPlayer.stats.spd} | 슈팅: ${currentDraftPlayer.stats.sht}`;
+            
+            // ★ 수정된 부분: 패스(pas) 스탯 표시 추가!
+            document.getElementById('draft-player-stats').innerText = `스피드: ${currentDraftPlayer.stats.spd} | 슈팅: ${currentDraftPlayer.stats.sht} | 패스: ${currentDraftPlayer.stats.pas}`;
+            
             setTimeout(() => popup.classList.add('popup-minimized'), 2000);
 
             let timeLeft = data.timeLimit; document.getElementById('draft-timer').innerText = timeLeft;
