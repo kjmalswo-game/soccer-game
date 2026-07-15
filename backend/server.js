@@ -56,6 +56,8 @@ function resetPositions(state, kickoffTeam) {
     state.kickoffTeam = kickoffTeam;
     state.passTargetId = null; 
     state.lastPasserId = null; 
+    state.lastAttackerTeam = null; // 🎯 자책골 방지용 공격수 추적 변수 초기화
+    state.lastAttackerName = null; 
     state.gkHolder = null;
     state.throwerId = null;
     state.kickerId = null;
@@ -103,10 +105,14 @@ io.on('connection', (socket) => {
 
     socket.on('joinRoom', (roomCode) => {
         if (roomCode === '000') {
+            // 🎯 테스트 AI의 포메이션을 DB에서 무작위로 하나 뽑아옵니다.
+            const formationKeys = Object.keys(db.formations);
+            const randomAiFormation = formationKeys[Math.floor(Math.random() * formationKeys.length)];
+            
             const testRoomCode = 'TEST_' + generateRoomCode(); 
             rooms[testRoomCode] = {
                 players: {
-                    'dummy_ai': { id: 'player1', ready: true, team: [], formation: '4-3-3' },
+                    'dummy_ai': { id: 'player1', ready: true, team: [], formation: randomAiFormation },
                     [socket.id]: { id: 'player2', ready: false, team: [], formation: null }
                 },
                 settings: { timer: db.settings.draftTimers[1], formation: null },
@@ -957,11 +963,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 
                 let pSpd = (p.stats && p.stats.spd) ? p.stats.spd : 80;
                 let moveSpeed = (pSpd / 100) * 0.85; 
-                // 🏃‍♂️ 선수 스프린트 속도 대폭 상향 (치달 및 공간 침투)
+                // 🏃‍♂️ 선수 스프린트 속도 대폭 상향 (유저 커스텀 수치 적용)
                 if (ballCarrier && p.id === ballCarrier.id) {
-                    moveSpeed *= 1.7; // 🎯 공을 잡은 상태의 돌파 속도를 미친 듯이 끌어올립니다.
+                    moveSpeed *= 2.1; // 🎯 공을 잡은 상태의 돌파 속도를 미친 듯이 끌어올립니다.
                 } else if (isPressing || state.passTargetId === p.id || p.isMakingRun) {
-                    moveSpeed *= 1.4; // 🎯 일반 침투 및 압박 스프린트 속도도 상향 (기존 1.25 -> 1.4)
+                    moveSpeed *= 1.8; // 🎯 일반 침투 및 압박 스프린트 속도도 상향
                 }
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
                 if (state.phase !== 'play') moveSpeed *= 5.0;
@@ -999,7 +1005,12 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if (!isBallInAir && distToBallAct < touchRadius && p.cooldown <= 0 && state.phase === 'play') {
                     state.lastTouchTeam = p.team;
                     state.lastTouchPlayerName = p.name; 
-                    state.passTargetId = null; 
+                    // 🎯 골키퍼의 선방 터치가 자책골로 기록되지 않도록, 필드 선수의 터치만 따로 저장합니다.
+                    if (p.role !== 'GK') {
+                        state.lastAttackerTeam = p.team;
+                        state.lastAttackerName = p.name;
+                    }
+                    state.passTargetId = null;
 
                     if (state.isKickoff) {
                         if (p.team === state.kickoffTeam) {
@@ -1113,21 +1124,18 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     
                     if (canShoot && Math.random() < shootProb) {
                         io.to(roomCode).emit('playSound', 'kick');
-                        // 슈팅 파워
-                        // distToGoal < 15 ? 6.0 : 9.5 부분의 숫자를 조절하세요.
-                        // 6.0은 근거리 슈팅 파워, 9.5는 중거리 슈팅 기본 파워입니다.
-                        // 이 숫자를 8.0, 12.0 등으로 올리면 대포알 슛이 나갑니다.
                         let power = distToGoal < 15 ? 6.0 : 8 + ((pSht - 70) * 0.25);
-                        // 구석을 노리는 궤적 AI (골대 Y 범위는 38 ~ 62)
-                        // 위쪽 구석을 쏠지 아래쪽 구석을 쏠지 결정
                         let cornerTarget = (Math.random() > 0.5) ? 1 : -1; 
-                        // 스탯이 높을수록 골대 양 끝(11~12 언저리)을 정교하게 찌름
                         let offsetSpread = 11 - (pSht > 85 ? (Math.random() * 2) : (Math.random() * 6));
                         let aimY = 50 + (cornerTarget * offsetSpread);
                         let dx = targetGoalX - p.x, dy = aimY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1; 
                         state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
-                        // 슛팅 강도에 비례해 비행 시간을 조절하여 빠르게 꽂히게 설정
                         state.ball.shotTicks = distToGoal < 15 ? 8 : 15;
+                        
+                        // 🚨 치명적 버그 수정: 슛을 차놓고 리턴(종료)하지 않아서 바로 드리블 속도로 덮어씌워지던 문제 해결
+                        p.cooldown = 15;
+                        state.eventText = "⚽ 강력한 슈팅!";
+                        return; 
                     }
 
                     // ★ 1. 압박 기준치 대폭 축소 (너무 쉽게 백패스 금지)
