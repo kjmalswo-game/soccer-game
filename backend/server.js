@@ -451,14 +451,44 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             } else { state.ball.vx = dir * 2.5; state.ball.vy = 0; }
                         }
                         else if (state.phase === 'corner') {
-                            let targetX = (state.possessionTeam === leftTeam) ? 90 : 10;
-                            let targetY = 50 + (Math.random() - 0.5) * 15;
-                            let dist = getDistance(state.ball.x, state.ball.y, targetX, targetY) || 1;
-                            state.ball.vx = ((targetX - state.ball.x) / dist) * 4.8; state.ball.vy = ((targetY - state.ball.y) / dist) * 4.8;
-                            state.ball.airTicks = Math.max(4, Math.floor(dist / 4.0));
-                            state.lastPasserId = state.kickerId; 
-                            state.eventText = "🎯 코너킥!";
-                        } 
+                        let cAttTeam = state.possessionTeam;
+                        let cDir = (cAttTeam === leftTeam) ? 1 : -1;
+                        let attackGoalX = (cAttTeam === leftTeam) ? 100 : 0; // 공격해야 할 상대방 골대 위치
+                        let defendGoalX = (p.team === leftTeam) ? 0 : 100;   // 지켜야 할 우리 팀 골대 위치
+                        let defDir = (p.team === leftTeam) ? 1 : -1;
+
+                        if (p.team === cAttTeam) {
+                            // ⚔️ 공격팀 (코너킥 차는 팀) 전술 배치
+                            if (p.role === 'FW') {
+                                // 공격수: 골대 바로 앞(6야드 박스) 헤더 경합을 위해 빽빽하게 밀집
+                                targetX = attackGoalX - (cDir * 6);
+                                targetY = 50 + (Math.random() - 0.5) * 15;
+                            } else if (p.role === 'MF') {
+                                // 미드필더: 페널티 스폿 주변 및 아크 정면에서 흘러나오는 세컨볼 및 컷백(중거리 슛) 대기
+                                targetX = attackGoalX - (cDir * 16);
+                                targetY = 50 + (p.id % 2 === 0 ? 12 : -12);
+                            } else {
+                                // 수비수: 상대 역습 차단을 위해 하프라인 후방에 대기
+                                // (💡팁: 만약 키 큰 센터백을 박스 안으로 올리고 싶다면 targetX = attackGoalX - (cDir * 8); 로 변경하세요)
+                                targetX = 50 - (cDir * 10);
+                                targetY = p.baseY;
+                            }
+                        } else {
+                            // 🛡️ 수비팀 (코너킥 막는 팀) 전술 배치
+                            if (p.role === 'FW') {
+                                // 공격수: 수비 가담을 완전히 풀고 하프라인 부근에서 롱패스를 받아 역습(카운터) 준비
+                                targetX = 50 - (defDir * 5); 
+                                targetY = p.baseY;
+                            } else if (p.role === 'MF') {
+                                // 미드필더: 페널티 박스 외곽에서 상대 미드필더들의 중거리 슛 견제 및 루즈볼 차단
+                                targetX = defendGoalX + (defDir * 18);
+                                targetY = 50 + (p.id % 2 === 0 ? 15 : -15);
+                            } else {
+                                // 수비수: 골대 앞 6야드 박스 안에 지역 방어벽(일명 '버스') 촘촘하게 형성
+                                targetX = defendGoalX + (defDir * 5);
+                                targetY = 50 + (Math.random() - 0.5) * 20;
+                            }
+                        }
                         // ★ 완전 무결한 골킥 로직: 불필요한 p.team 등 참조 에러 유발 코드 원천 삭제
                         else if (state.phase === 'goal_kick') {
                             let kickDir = (state.possessionTeam === leftTeam) ? 1 : -1;
@@ -612,6 +642,46 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (p.role === 'FW') { targetX = 50 - (dir * 3) + organicX; targetY = p.baseY; }
                             else if (p.role === 'MF') { targetX = 50 - (dir * 10) + organicX; targetY = p.baseY; }
                             else if (p.role === 'DF') { targetX = 50 - (dir * 20) + organicX; targetY = p.baseY; }
+                        }
+                    }
+                    else if (state.phase === 'throw_in') {
+                        // 🎯 스로인 상황 시 양 팀 선수들의 위치 배치 전술 (원하는 수치로 직접 커스텀 가능)
+                        let bx = state.ball.x;
+                        let by = state.ball.y;
+
+                        if (p.id === state.throwerId) {
+                            targetX = bx;
+                            targetY = by;
+                        } else if (p.team === state.possessionTeam) {
+                            // 🏃 공격팀 (스로인 던지는 팀) 배치
+                            if (p.role === 'FW') {
+                                // 공격수: 골대를 향해 침투하는 움직임 대기
+                                targetX = bx + (dir * 15) + (Math.random() - 0.5) * 4;
+                                targetY = by + (p.baseY - by) * 0.4;
+                            } else if (p.role === 'MF') {
+                                // 미드필더: 던지는 사람 주변으로 짧은 패스를 받으러 접근
+                                targetX = bx + (dir * 5) + (p.id % 2 === 0 ? 3 : -5);
+                                targetY = by + (p.id % 2 === 0 ? 10 : -10);
+                            } else {
+                                // 수비수: 역습 대비 뒤쪽 안전지대 형성
+                                targetX = bx - (dir * 16);
+                                targetY = p.baseY;
+                            }
+                        } else {
+                            // 🛡️ 수비팀 (스로인 수비하는 팀) 배치
+                            if (p.role === 'FW') {
+                                // 전방 압박 및 세컨볼 역습 대기
+                                targetX = bx + (dir * 10);
+                                targetY = by + (p.baseY - by) * 0.3;
+                            } else if (p.role === 'MF') {
+                                // 상대 미드필더들을 1대1 타이트 마크 (근접 밀착)
+                                targetX = bx + (dir * 2) + (p.id % 2 === 0 ? 2 : -2);
+                                targetY = by + (p.id % 2 === 0 ? 7 : -7);
+                            } else {
+                                // 최후방 수비: 중앙 페널티 박스 앞을 견고하게 차단
+                                targetX = bx + (dir * 12);
+                                targetY = p.baseY * 0.95;
+                            }
                         }
                     }
                     else {
@@ -1135,6 +1205,22 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     let ballSpeedSq = state.ball.vx ** 2 + state.ball.vy ** 2;
                     if (ballSpeedSq > 10) { 
+                        // 🎯 박스 안이나 아크 부근에 패스가 도달하면 볼 트래핑을 생략하고 즉시 다이렉트 슛 폭발!
+                        if (isInShootingRange) {
+                            io.to(roomCode).emit('playSound', 'kick');
+                            let power = distToGoal < 15 ? 7.0 : 10.5 + ((pSht - 70) * 0.25);
+                            let cornerTarget = (Math.random() > 0.5) ? 1 : -1; 
+                            let offsetSpread = 11 - (pSht > 85 ? (Math.random() * 2) : (Math.random() * 6));
+                            let aimY = 50 + (cornerTarget * offsetSpread);
+                            
+                            let dx = targetGoalX - p.x, dy = aimY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1; 
+                            state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
+                            state.ball.shotTicks = distToGoal < 15 ? 8 : 15; 
+                            p.cooldown = 15; // 슈팅 후 쿨다운 적용
+                            state.eventText = "⚡ 전율의 논스톱 슈팅!!!";
+                            return;
+                        }
+
                         state.ball.vx = 0; state.ball.vy = 0; 
                         state.ball.x = p.x + (dir * 0.5); state.ball.y = p.y; 
                         p.cooldown = 0; state.eventText = "볼 컨트롤"; return; 
@@ -1146,11 +1232,17 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     let isWingerDrive = isWingerPos && inAttackingHalf && Math.random() < 0.8; 
                     let wantsToHold = (p.role === 'FW' && distToGoal < 25) || isWingerDrive; 
                     
-                    // 윙어 돌파 모드일 경우 패스 커트라인을 150으로 확 올려 일반 패스 자체를 무시함
+                    // 🎯 슈팅 유효 사거리(박스 안 및 아크 부근) 정의
+                    let isInShootingRange = inOpponentBox || (distToGoal <= 22 && angleToGoal < 25);
                     let passThreshold = wantsToHold ? (bestOption && (bestOption.isThrough || bestOption.isCross || bestOption.isCutback) ? 35 : 150) : 25;
+                    
+                    if (isInShootingRange) {
+                        // 🎯 슛이 최우선이므로 웬만한 패스(백패스 포함)는 전부 봉쇄합니다.
+                        // 단, 완전히 골문이 열린 확실한 컷백(180점 이상)일 때만 아주 예외적으로 패스하도록 제어합니다.
+                        passThreshold = (bestOption && bestOption.isCutback) ? 180 : 999;}
 
-                    // 진짜 뺏기기 직전이고, 윙어 돌파 중이 아니면 컷트라인을 낮춰 간신히 백패스
-                    if (isHeavilyPressed && !isWingerDrive) passThreshold = 10; 
+                    // 진짜 뺏기기 직전이고, 윙어 돌파 중이 아니며, 슈팅 지역이 아닐 때만 컷트라인을 낮춰 백패스 허용
+                    if (isHeavilyPressed && !isWingerDrive && !isInShootingRange) passThreshold = 10;
 
                     if (bestOption && bestOption.score > passThreshold) {
                         let errorMargin = Math.max(0.05, (100 - pPas) * 0.025); 
@@ -1181,10 +1273,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             state.ball.airTicks = Math.floor(d / 4.0);
                             state.eventText = "🚀 크로스!";
                         } else if (isBackpass) {
-                            state.eventText = isHeavilyPressed ? "🛡️ 위기 탈출 백패스" : "안전한 템포 조절";
+                            state.eventText = isHeavilyPressed ? "🛡️ 위기 탈출" : "템포 조절";
                         } else if (d > 20) {
                             state.ball.airTicks = Math.floor(d / 5.0);
-                            state.eventText = bestOption.isThrough ? "🎯 정교한 스루패스!" : "🚀 롱 패스 전환!";
+                            state.eventText = bestOption.isThrough ? "🎯 스루패스!" : "🚀 롱킥 전환!";
                         } else { 
                             state.eventText = bestOption.isThrough ? "창의적 스루패스!" : "연계 플레이"; 
                         }
@@ -1198,19 +1290,20 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             return isForward && getDistance(p.x, p.y, e.x, e.y) < 12 && Math.abs(e.y - p.y) < 8;
                         });
 
-                        let nextVx = dir * (pSpd / 100) * 1.2; 
+                        // ⚡ 드리블 기본 전진 및 좌우 전환 속도 대폭 상향 (기존 1.2 -> 1.8)
+                        let nextVx = dir * (pSpd / 100) * 1.8; 
                         let centerDriveVy = (50 - p.y) * 0.05 + (Math.random() - 0.5);
-                        let nextVy = centerDriveVy * 0.5;
+                        let nextVy = centerDriveVy * 0.8; 
 
                         // ★ 윙어 폭풍 돌파 전용 움직임
                         if (isWingerDrive) {
-                            nextVx = dir * (pSpd / 100) * 1.8; // 전진 속도 극대화
+                            nextVx = dir * (pSpd / 100) * 2.8; // 측면 스프린트 가속 대폭 상향 (기존 1.8 -> 2.8)
                             if (inFinalThird) {
-                                nextVy = (p.y < 50) ? 1.5 : -1.5; // 박스 안으로 침투 (컷인사이드)
-                                state.eventText = "⚡ 측면 파괴 침투!";
+                                nextVy = (p.y < 50) ? 2.5 : -2.5; // 박스 침투 컷인 속도 상향 (기존 1.5 -> 2.5)
+                                state.eventText = "⚡ 측면 침투!";
                             } else {
-                                nextVy = 0; // 터치라인을 따라 일직선으로 치달
-                                state.eventText = "⚡ 터치라인 돌파!";
+                                nextVy = 0; 
+                                state.eventText = "⚡ 돌파!";
                             }
                             p.cooldown = 1; 
                         } 
@@ -1222,22 +1315,22 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (p.y < 15) dodgeDir = 1;
                             if (p.y > 85) dodgeDir = -1;
 
-                            nextVy = dodgeDir * 1.8; 
-                            nextVx = dir * (pSpd / 100) * 0.7; 
-                            state.eventText = wantsToHold ? "🛡️ 공간 확보" : "⚡ 회피 기동!";
+                            nextVy = dodgeDir * 2.5; // 수비수 따돌릴 때 횡방향 급격하게 전환 (기존 1.8 -> 2.5)
+                            nextVx = dir * (pSpd / 100) * 1.2; // 수비 돌파 시 감속 최소화 (기존 0.7 -> 1.2)
+                            state.eventText = wantsToHold ? "🛡️ 공간 확보" : "회피!";
                             p.cooldown = 0;
                         } else {
                             if (inFinalThird && Math.random() < (pSpd / 100) * 0.7) {
-                                if (p.y < 25) nextVy = 1.8;
-                                else if (p.y > 75) nextVy = -1.8;
-                                else nextVy = centerDriveVy * 0.8;
+                                if (p.y < 25) nextVy = 2.5;
+                                else if (p.y > 75) nextVy = -2.5;
+                                else nextVy = centerDriveVy * 1.2;
 
-                                nextVx = dir * (pSpd / 100) * 1.6; 
-                                state.eventText = "⚡ 폭발적 공간 돌파!"; 
+                                nextVx = dir * (pSpd / 100) * 2.4; // 공간 돌파 전진력 대폭 상향 (기존 1.6 -> 2.4)
+                                state.eventText = "폭발적 공간 돌파!"; 
                                 p.cooldown = 1; 
                             } else {
-                                nextVx = dir * (pSpd / 100) * 1.0; 
-                                nextVy = centerDriveVy * 0.4; 
+                                nextVx = dir * (pSpd / 100) * 1.5; // 일반 필드 드리블 주력 상향 (기존 1.0 -> 1.5)
+                                nextVy = centerDriveVy * 0.6; 
                                 state.eventText = "전진 드리블"; 
                                 p.cooldown = 0; 
                             }
