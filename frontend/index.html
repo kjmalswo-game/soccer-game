@@ -138,7 +138,6 @@
     </div>
     
     <div id="screen-result" class="screen">
-        <!-- h1 대신 div로 바꾸어 텍스트 크기가 엉키는 현상을 해결합니다 -->
         <div id="final-result-text" style="text-align: center; width: 100%;"></div>
         <button onclick="location.reload()" style="font-size:24px; padding: 20px 40px; margin-top: 30px;">처음으로 돌아가기</button>
     </div>
@@ -298,7 +297,7 @@
             popup.classList.remove('popup-minimized');
             document.getElementById('draft-player-name').innerText = player.name;
             let pDef = (player.stats.def !== undefined) ? player.stats.def : 80;
-            document.getElementById('draft-player-stats').innerText = `스피드: ${player.stats.spd} | 골결정력: ${player.stats.sht} | 패스: ${player.stats.pas} | 수비: ${pDef}`;
+            document.getElementById('draft-player-stats').innerText = `스피드: ${player.stats.spd} | 골 결정력: ${player.stats.sht} | 패스: ${player.stats.pas} | 피지컬: ${pDef}`;
             setTimeout(() => popup.classList.add('popup-minimized'), 2000);
         }
 
