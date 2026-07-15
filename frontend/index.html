@@ -209,7 +209,7 @@
                 slotElement.innerText = playerInfo.name.substring(0, 4);
                 slotElement.classList.add('player-placed');
             }
-            currentDraftPlayer = null; // 쿨타임 초기화
+            currentDraftPlayer = null; 
         });
 
         socket.on('matchStarted', (matchState) => { 
@@ -253,17 +253,18 @@
             const ball = document.getElementById('match-ball');
             if(ball) { ball.style.left = data.ball.x + '%'; ball.style.top = data.ball.y + '%'; }
 
+            // ★ 누락되었던 괄호 에러 완벽 해결 구역
             data.players.forEach(p => {
                 const pEl = document.getElementById(`match-player-${p.team}-${p.id}`);
                 if(pEl) { pEl.style.left = p.x + '%'; pEl.style.top = p.y + '%'; }
-            }); // 🚨 [수정 완료] 기존 코드에서 여기가 통째로 빠져 있어서 화면이 아예 멈췄습니다!
+            });
 
             const goalLogContainer = document.getElementById('goalLogBoard');
             if (goalLogContainer && data.goalLog) {
                 goalLogContainer.innerHTML = '<strong>[ 득점 기록 ]</strong><br>';
                 data.goalLog.forEach(log => {
-                    let color = log.team === 1 ? 'blue' : 'red';
-                    goalLogContainer.innerHTML += `<span style="color:${color}; font-size:12px;">⚽ ${log.time} - ${log.scorer}</span><br>`;
+                    let color = log.team === 1 ? '#3867d6' : '#eb3b5a';
+                    goalLogContainer.innerHTML += `<span style="color:${color}; font-size:14px; font-weight:bold;">⚽ ${log.time} - ${log.scorer}</span><br>`;
                 });
             }
         });
@@ -290,8 +291,10 @@
             goalAlert.style.transition = 'opacity 0.5s ease-in-out';
         
             let teamName = data.team === 1 ? "블루팀" : "레드팀"; 
-            goalAlert.innerHTML = `⚽ <b>${data.scorer}</b> 득점! <br><span style="font-size:14px; color:#ccc;">${teamName} - ${data.time}</span>`;
+            let teamColor = data.team === 1 ? "#3867d6" : "#eb3b5a";
+            goalAlert.innerHTML = `⚽ <b>${data.scorer}</b> 득점! <br><span style="font-size:14px; color:${teamColor};">${teamName} - ${data.time}</span>`;
             document.body.appendChild(goalAlert);
+            
             setTimeout(() => {
                 goalAlert.style.opacity = '0';
                 setTimeout(() => goalAlert.remove(), 500); 
@@ -335,29 +338,48 @@
             }, 1000);
         });
 
+        // ★ 결과창: 승리 팀 텍스트 및 상세 득점 기록 완벽 구현 구역
         socket.on('matchEnded', (data) => {
-            let endMessage = `<h2>경기 종료!</h2>`;
-            endMessage += `<h3>최종 스코어: 블루팀 ${data.score.team1} : ${data.score.team2} 레드팀</h3><hr>`;
+            let team1Score = data.score.team1;
+            let team2Score = data.score.team2;
+            let winnerText = "";
+            let winnerColor = "";
+
+            if (team1Score > team2Score) {
+                winnerText = "🏆 블루팀 승리!";
+                winnerColor = "#3867d6"; 
+            } else if (team2Score > team1Score) {
+                winnerText = "🏆 레드팀 승리!";
+                winnerColor = "#eb3b5a"; 
+            } else {
+                winnerText = "🤝 무승부";
+                winnerColor = "#f7b731"; 
+            }
+
+            let endMessage = `<h1 style="font-size: 60px; color: ${winnerColor}; margin-bottom: 10px; text-shadow: 2px 2px 4px #000;">${winnerText}</h1>`;
+            endMessage += `<h2 style="font-size: 35px; margin-top: 0;">블루팀 <span style="color:#3867d6">${team1Score}</span> : <span style="color:#eb3b5a">${team2Score}</span> 레드팀</h2><hr style="border-color:#555; width: 80%;">`;
             
             if (data.goalLog && data.goalLog.length > 0) {
-                endMessage += `<h4>상세 득점 기록</h4><ul style="text-align: left; max-width: 300px; margin: 0 auto;">`;
+                endMessage += `<h3 style="font-size: 24px; color:#ddd;">상세 득점 기록</h3>`;
+                endMessage += `<ul style="text-align: left; max-width: 400px; margin: 0 auto; font-size: 18px; background: rgba(0,0,0,0.5); padding: 20px 40px; border-radius: 10px; list-style: none;">`;
                 data.goalLog.forEach(log => {
                     let teamName = log.team === 1 ? "블루팀" : "레드팀";
-                    let color = log.team === 1 ? "blue" : "red";
-                    endMessage += `<li style="color:${color}; margin-bottom:5px;">⚽ <b>${teamName}</b>: ${log.scorer} (${log.time})</li>`;
+                    let color = log.team === 1 ? "#74b9ff" : "#ff7675";
+                    endMessage += `<li style="margin-bottom:10px; border-bottom: 1px solid #444; padding-bottom: 5px;">
+                        <span style="color:${color}; font-weight:bold;">⚽ ${teamName}</span> 
+                        - ${log.scorer} <span style="font-size:14px; color:#aaa; float:right;">(${log.time})</span>
+                    </li>`;
                 });
                 endMessage += `</ul>`;
             } else {
-                endMessage += `<p>득점 없음 (0:0 무승부)</p>`;
+                endMessage += `<p style="font-size: 24px; color: #aaa; background: rgba(0,0,0,0.5); padding: 20px; border-radius: 10px; max-width: 300px; margin: 0 auto;">득점 없음</p>`;
             }
         
-            // 🚨 [수정 완료] 존재하지 않는 resultScreen 대신 진짜 ID인 final-result-text 에 삽입하고 화면을 띄웁니다!
             document.getElementById('final-result-text').innerHTML = endMessage;
             showScreen('screen-result'); 
         });
-        socket.on('error', (msg) => {
-            alert(msg);
-        });
+
+        socket.on('error', (msg) => { alert(msg); });
     </script>
 </body>
 </html>
