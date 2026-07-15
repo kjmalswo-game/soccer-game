@@ -303,6 +303,19 @@ io.on('connection', (socket) => {
         }
     });
 });
+function startDraftPhase(roomCode) {
+    const room = rooms[roomCode]; 
+    room.state = 'draft'; 
+    room.draftCount = 0;
+    
+    // 🎯 드래프트 시작 시 설정된 스킵 횟수를 각 플레이어에게 초기화 부여
+    Object.values(room.players).forEach(p => {
+        p.skipsLeft = room.settings.skips || 0;
+    });
+
+    io.to(roomCode).emit('startDraft'); 
+    nextDraftTurn(roomCode);
+}
 
 function nextDraftTurn(roomCode) {
     const room = rooms[roomCode];
