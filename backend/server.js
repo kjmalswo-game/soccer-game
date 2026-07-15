@@ -592,8 +592,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         if (p.team === state.possessionTeam) {
                             // 공격하는 팀 (골킥 차는 팀): 무조건 하프라인을 넘지 않고 자기 진영에 대기
                             if (p.role === 'FW') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; } // 하프라인 바로 뒤에서 롱볼 대비
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 5) + organicX; targetY = p.baseY; } // 수비와 공격수 사이에서 빌드업 준비
-                            else { targetX = 50 - (dir * 15) + organicX; targetY = p.baseY; } // 키퍼 앞쪽 페널티박스 외곽에 수비라인 형성
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 17) + organicX; targetY = p.baseY; } // 수비와 공격수 사이에서 빌드업 준비
+                            else { targetX = 50 - (dir * 27) + organicX; targetY = p.baseY; } // 키퍼 앞쪽 페널티박스 외곽에 수비라인 형성
                         } else {
                             // 수비하는 팀 (골킥 막는 팀): 자기 진영에서 대형을 갖추고 세컨볼 경합 준비
                             if (p.role === 'FW') { targetX = 50 - (dir * 3) + organicX; targetY = p.baseY; } // 하프라인 선상에서 세컨볼 노림
@@ -960,7 +960,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
                 if (state.phase !== 'play') moveSpeed *= 5.0;
                 // 골키퍼 반응속도
-                // 2.0은 평소보다 3배 빠르게 몸을 날린다는 뜻입니다.
+                // 2.0은 평소보다 2배 빠르게 몸을 날린다는 뜻입니다.
                 // 대포알 슛을 따라가게 하려면 이 수치를 4.0, 5.0 등으로 확 올려주세요.
                 if (p.role === 'GK' && p.isDiving) moveSpeed *= 2.0; // 다이빙 시 폭발적인 속도로 몸을 날림
 
@@ -1153,25 +1153,37 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                             // 전진 패스와 백패스(후진) 철저히 분리
                             if (forwardDist > -2) {
-                                // 전진 패스는 가산점 팍팍 (역습 시 스루패스 점수 대폭발)
-                                if (isCounterAttack) score += (forwardDist * 25.0); 
-                                else if (inAttackingHalf) score += (forwardDist * (pPas > 85 ? 14.0 : 9.0)); 
+                                // 전진 패스는 가산점 팍팍
+                                if (isCounterAttack) score += (forwardDist * 15.0); 
+                                else if (inAttackingHalf) score += (forwardDist * (pPas > 85 ? 10.0 : 7.0)); 
                                 else score += (forwardDist * (pPas > 85 ? 6.5 : 5.0)); 
 
                                 let isWinger = p.y < 20 || p.y > 80;
                                 let isReceiverCentral = m.y > 30 && m.y < 70;
+                                
+                                // 🎯 [수정 1] 무지성 조기 크로스 방지: 상대 페널티박스 근처 '깊은 위치'에서만 크로스를 허용
                                 if (isWinger && inFinalThird && isReceiverCentral) {
-                                    score += 5000;
-                                    isCross = true;
+                                    let isDeepZone = (p.team === leftTeam && p.x > 82) || (p.team === rightTeam && p.x < 18);
+                                    if (isDeepZone) {
+                                        score += 3500; // 깊은 곳에 도달했을 때만 점수를 퍼주어 크로스 유도
+                                        isCross = true;
+                                    }
+                                    // 깊지 않으면 가산점이 없어서 자동으로 패스 대신 드리블을 선택함
                                 }
 
                                 if (m.isMakingRun && minEnemyDistToM > 4 && !laneBlocked) {
                                     let isMWing = m.y < 25 || m.y > 75; 
-                                    if (isMWing) score += 3000; 
-                                    else score += inAttackingHalf ? (pPas * 15) : (pPas * 10); 
+                                    if (isMWing) {
+                                        // 🎯 [수정 2] 미드필더가 윙어에게 뿌릴 때만 특대 가산점, 다른 포지션에선 논스톱 스루 남발 금지
+                                        if (p.role === 'MF') score += 2500;
+                                        else score += 400; 
+                                    } else {
+                                        score += inAttackingHalf ? (pPas * 12) : (pPas * 8); 
+                                    }
                                     isThrough = true;
                                 }
-                            } else {
+                            }
+                            else {
                                 // 후진 패스 (백패스)
                                 let isDeep = (p.team === leftTeam && p.x > 85) || (p.team === rightTeam && p.x < 15);
                                 let isReceiverInBox = (p.team === leftTeam && m.x > 75 && m.x < p.x) || (p.team === rightTeam && m.x < 25 && m.x > p.x);
@@ -1248,24 +1260,28 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     // ★ 2. 윙어 돌파 특화 및 무조건 드리블 유도
                     let isWingerPos = (p.y < 22 || p.y > 78);
-                    let isWingerDrive = isWingerPos && inAttackingHalf && Math.random() < 0.8; 
+                    // 🎯 윙어는 공을 잡으면 95% 확률로 일단 무조건 치고 달리도록 설정
+                    let isWingerDrive = isWingerPos && inAttackingHalf && Math.random() < 0.95; 
                     
-                    // 🎯 역습 상황이거나, 내 앞에 선수가 없으면 무조건 내가 치고 나감
                     let isCounterDrive = isCounterAttack || isIsolatedFront;
-                    let wantsToHold = (p.role === 'FW' && distToGoal < 25) || isWingerDrive || isCounterDrive; 
+                    
+                    // 🎯 [수정 3] 공격수(FW)와 윙어는 하프라인만 넘으면 무조건 패스보다 '드리블(볼 소유)'을 1순위로 강제
+                    let wantsToHold = (p.role === 'FW' && inAttackingHalf) || isWingerDrive || isCounterDrive; 
                     
                     let isInShootingRange = inOpponentBox || (distToGoal <= 22 && angleToGoal < 25);
-                    // 🎯 혼자 치고 나가는 상황에서는 확실한 스루/크로스가 아니면 절대 패스 안함 (패스 커트라인 대폭 상향)
-                    let passThreshold = wantsToHold ? (bestOption && (bestOption.isThrough || bestOption.isCross || bestOption.isCutback) ? 60 : 300) : 25;
+                    
+                    // 🎯 [수정 4] 공격진이 공을 잡았을 때, 어설픈 패스를 완전히 차단하고 드리블을 치도록 커트라인 '초대폭' 상향
+                    // 기존 60은 점수를 너무 쉽게 넘겨 논스톱 패스가 나갔음. 확실한 기회(800점 이상)가 아니면 직접 몰고 감.
+                    let passThreshold = wantsToHold ? (bestOption && (bestOption.isThrough || bestOption.isCross || bestOption.isCutback) ? 800 : 2500) : 25;
                     
                     if (isInShootingRange) {
                         passThreshold = (bestOption && bestOption.isCutback) ? 180 : 999;
                     }
 
-                    // 진짜 뺏기기 직전이고, 역습 돌파 중이 아니며, 슈팅 지역이 아닐 때만 컷트라인을 낮춰 백패스 허용
                     if (isHeavilyPressed && !wantsToHold && !isInShootingRange) passThreshold = 10;
 
                     if (bestOption && bestOption.score > passThreshold) {
+                        // ... (패스 실행 코드는 그대로 둡니다) ...
                         let errorMargin = Math.max(0.05, (100 - pPas) * 0.025); 
                         let targetX = bestOption.mate.x + (Math.random() - 0.5) * errorMargin; 
                         let targetY = bestOption.mate.y + (Math.random() - 0.5) * errorMargin;
@@ -1315,15 +1331,19 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let nextVy = centerDriveVy * 0.8; 
 
                         if (isWingerDrive) {
-                            // 🎯 측면 터치라인 돌파 시 앞으로 쳐놓는 길이를 대폭 단축 (기존 1.4 -> 1.05)
                             nextVx = dir * (pSpd / 100) * 1.02; 
-                            if (inFinalThird) {
-                                // 🎯 페널티 박스 쪽으로 꺾어 들어갈 때(컷인사이드) 대각선으로 쳐놓는 길이도 단축 (기존 1.8 -> 1.2) 둘다바꿔야됨.
+                            
+                            // 🎯 컷인사이드(안쪽 꺾기) 시작 위치를 파이널 서드 초입이 아닌 '페널티 박스 앞(80m 지점)'으로 확 늦춤
+                            let isNearBox = (p.team === leftTeam && p.x > 80) || (p.team === rightTeam && p.x < 20);
+                            
+                            if (isNearBox) {
+                                // 페널티 박스 앞까지 깊숙하게 전진한 후에야 대각선(1.05)으로 파고들기 시작!
                                 nextVy = (p.y < 50) ? 1.05 : -1.05; 
-                                state.eventText = "⚡ 측면 침투!";
+                                state.eventText = "⚡ 박스 진입 컷인!";
                             } else {
+                                // 하프라인을 넘었어도 얕은 위치면 꺾지 않고 터치라인을 따라 일직선으로 치고 달림
                                 nextVy = 0; 
-                                state.eventText = "⚡ 돌파!";
+                                state.eventText = "⚡ 터치라인 치달!";
                             }
                             p.cooldown = 1; 
                         }
