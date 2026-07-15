@@ -605,13 +605,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         if (p.team === state.possessionTeam) {
                             // 캐칭한 팀 (공격 전개 준비) - 보통 역습을 위해 골킥보다 라인을 높게 올립니다.
                             if (p.role === 'FW') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; } // 하프라인 넘어서 대기
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 5) + organicX; targetY = p.baseY; } 
-                            else { targetX = 50 - (dir * 15) + organicX; targetY = p.baseY; } 
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 20) + organicX; targetY = p.baseY; } 
+                            else { targetX = 50 - (dir * 30) + organicX; targetY = p.baseY; } 
                         } else {
                             // 수비하는 팀 (빠르게 복귀)
-                            if (p.role === 'FW') { targetX = 50 - (dir * 3) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 10) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'DF') { targetX = 50 - (dir * 20) + organicX; targetY = p.baseY; }
+                            if (p.role === 'FW') { targetX = 50 + (dir * 3) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 5) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'DF') { targetX = 50 - (dir * 15) + organicX; targetY = p.baseY; }
                         }
                     }
                     else if (state.phase === 'throw_in') {
@@ -1258,8 +1258,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             targetX = bestOption.mate.x; targetY = bestOption.mate.y; 
                             bestOption.isThrough = false; bestOption.isCross = false;
                         } else if (bestOption.isThrough || bestOption.isCross) { 
-                            // 🎯 스루패스 시 선수의 스피드에 맞춰 공간으로 훨씬 길고 깊게 찔러줍니다. (기존 6.0 -> 최대 14.0)
-                            let leadDist = (bestOption.mate.stats && bestOption.mate.stats.spd > 85) ? 14.0 : 9.0;
+                            // 🎯 스루패스를 너무 멀리 주지 않고, 적당한 앞공간(최대 9.0)으로 절묘하게 찔러줍니다.
+                            let leadDist = (bestOption.mate.stats && bestOption.mate.stats.spd > 85) ? 9.0 : 6.0;
                             targetX += dir * leadDist; 
                         }
 
@@ -1300,9 +1300,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                         // ★ 윙어 폭풍 돌파 전용 움직임
                         if (isWingerDrive) {
-                            nextVx = dir * (pSpd / 100) * 2.8; // 측면 스프린트 가속 대폭 상향 (기존 1.8 -> 2.8)
+                            // 🎯 터치가 너무 길어지지 않도록 스피드를 2.0으로 조절 (공을 발에 더 붙임)
+                            nextVx = dir * (pSpd / 100) * 2.0; 
                             if (inFinalThird) {
-                                nextVy = (p.y < 50) ? 2.5 : -2.5; // 박스 침투 컷인 속도 상향 (기존 1.5 -> 2.5)
+                                nextVy = (p.y < 50) ? 2.5 : -2.5; 
                                 state.eventText = "⚡ 측면 침투!";
                             } else {
                                 nextVy = 0; 
@@ -1311,6 +1312,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             p.cooldown = 1; 
                         } 
                         else if (imminentThreat) {
+                            // ... (회피 기동 코드는 그대로 둡니다) ...
                             let spaceAbove = imminentThreat.y - 0; 
                             let spaceBelow = 100 - imminentThreat.y;
                             let dodgeDir = spaceAbove > spaceBelow ? -1 : 1; 
@@ -1318,8 +1320,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (p.y < 15) dodgeDir = 1;
                             if (p.y > 85) dodgeDir = -1;
 
-                            nextVy = dodgeDir * 2.5; // 수비수 따돌릴 때 횡방향 급격하게 전환 (기존 1.8 -> 2.5)
-                            nextVx = dir * (pSpd / 100) * 1.2; // 수비 돌파 시 감속 최소화 (기존 0.7 -> 1.2)
+                            nextVy = dodgeDir * 2.5; 
+                            nextVx = dir * (pSpd / 100) * 1.2; 
                             state.eventText = wantsToHold ? "🛡️ 공간 확보" : "회피!";
                             p.cooldown = 0;
                         } else {
@@ -1328,9 +1330,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 else if (p.y > 75) nextVy = -2.5;
                                 else nextVy = centerDriveVy * 1.2;
 
-                                nextVx = dir * (pSpd / 100) * 2.4; // 공간 돌파 전진력 대폭 상향 (기존 1.6 -> 2.4)
+                                // 🎯 일반 공간 돌파 시에도 터치 길이를 1.8 정도로 다듬어 줍니다.
+                                nextVx = dir * (pSpd / 100) * 1.8; 
                                 state.eventText = "폭발적 공간 돌파!"; 
-                                p.cooldown = 1; 
+                                p.cooldown = 1;
                             } else {
                                 nextVx = dir * (pSpd / 100) * 1.5; // 일반 필드 드리블 주력 상향 (기존 1.0 -> 1.5)
                                 nextVy = centerDriveVy * 0.6; 
