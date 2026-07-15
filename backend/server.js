@@ -56,8 +56,8 @@ function resetPositions(state, kickoffTeam) {
     state.kickoffTeam = kickoffTeam;
     state.passTargetId = null; 
     state.lastPasserId = null; 
-    state.lastAttackerTeam = null; // 🎯 자책골 방지용 공격수 추적 변수 초기화
-    state.lastAttackerName = null; 
+    state.lastTeam1Touch = null; // 🎯 팀1 마지막 터치 추적용
+    state.lastTeam2Touch = null; // 🎯 팀2 마지막 터치 추적용
     state.gkHolder = null;
     state.throwerId = null;
     state.kickerId = null;
@@ -1005,11 +1005,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if (!isBallInAir && distToBallAct < touchRadius && p.cooldown <= 0 && state.phase === 'play') {
                     state.lastTouchTeam = p.team;
                     state.lastTouchPlayerName = p.name; 
-                    // 🎯 골키퍼의 선방 터치가 자책골로 기록되지 않도록, 필드 선수의 터치만 따로 저장합니다.
-                    if (p.role !== 'GK') {
-                        state.lastAttackerTeam = p.team;
-                        state.lastAttackerName = p.name;
-                    }
+                    
+                    // 🎯 각 팀별 마지막 터치 선수를 독립적으로 기록 (자책골 방어용)
+                    if (p.team === 1) state.lastTeam1Touch = p.name;
+                    else if (p.team === 2) state.lastTeam2Touch = p.name;
+                    
                     state.passTargetId = null;
 
                     if (state.isKickoff) {
@@ -1445,7 +1445,14 @@ function handleGoal(room, scoringTeam) {
 
     // 득점자 판별
     let scorerName = "자책골";
-    if (state.lastTouchTeam === scoringTeam && state.lastTouchPlayerName) {
+    
+    // 수비수가 걷어내려다 넣었든 키퍼 손에 맞고 들어갔든, 
+    // 득점한 팀(scoringTeam)의 가장 마지막 터치 선수를 득점자로 인정합니다.
+    if (scoringTeam === 1 && state.lastTeam1Touch) {
+        scorerName = state.lastTeam1Touch;
+    } else if (scoringTeam === 2 && state.lastTeam2Touch) {
+        scorerName = state.lastTeam2Touch;
+    } else if (state.lastTouchTeam === scoringTeam && state.lastTouchPlayerName) {
         scorerName = state.lastTouchPlayerName;
     }
 
