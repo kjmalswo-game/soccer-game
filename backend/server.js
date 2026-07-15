@@ -95,8 +95,8 @@ io.on('connection', (socket) => {
         const roomCode = generateRoomCode();
         rooms[roomCode] = { 
             players: { [socket.id]: { id: 'player1', ready: false, team: [] } }, 
-            // 🎯 settings에 skips 추가 (기본 0)
-            settings: { timer: db.settings.draftTimers[1], skips: 0, formation: null }, 
+            // 🎯 settings에 halfTimeDuration: 15 추가
+            settings: { timer: db.settings.draftTimers[1], skips: 0, halfTimeDuration: 15, formation: null }, 
             state: 'lobby', 
             availablePlayers: [...db.players] 
         };
@@ -106,7 +106,6 @@ io.on('connection', (socket) => {
 
     socket.on('joinRoom', (roomCode) => {
         if (roomCode === '000') {
-            // 🎯 테스트 AI의 포메이션을 DB에서 무작위로 하나 뽑아옵니다.
             const formationKeys = Object.keys(db.formations);
             const randomAiFormation = formationKeys[Math.floor(Math.random() * formationKeys.length)];
             
@@ -116,7 +115,8 @@ io.on('connection', (socket) => {
                     'dummy_ai': { id: 'player1', ready: true, team: [], formation: randomAiFormation },
                     [socket.id]: { id: 'player2', ready: false, team: [], formation: null }
                 },
-                settings: { timer: db.settings.draftTimers[1], formation: null },
+                // 🎯 테스트방(000)은 에러 방지를 위해 하프타임을 15초로 강력하게 고정합니다.
+                settings: { timer: db.settings.draftTimers[1], skips: 0, halfTimeDuration: 15, formation: null },
                 state: 'lobby',
                 availablePlayers: [...db.players],
                 isTestMode: true 
@@ -147,6 +147,13 @@ io.on('connection', (socket) => {
     socket.on('setSkips', (roomCode, skipsValue) => {
         if (rooms[roomCode]) {
             rooms[roomCode].settings.skips = parseInt(skipsValue);
+        }
+    });
+
+    // 🎯 방장이 하프타임 시간을 변경할 때 받는 이벤트
+    socket.on('setHalfTime', (roomCode, timeValue) => {
+        if (rooms[roomCode]) {
+            rooms[roomCode].settings.halfTimeDuration = parseInt(timeValue);
         }
     });
 
@@ -1585,8 +1592,11 @@ function setupSetPiece(state, type, sideTeam = 1) {
 
 function startHalfTime(roomCode) {
     const room = rooms[roomCode];
-    io.to(roomCode).emit('halfTimeStarted', db.settings.halfTimeDurationRealSeconds, room.matchState.players);
-    setTimeout(() => { startMatchPhase(roomCode, true); }, db.settings.halfTimeDurationRealSeconds * 1000);
+    // 🎯 방장이 설정한 하프타임 시간을 가져오고, 없으면 15초를 사용합니다.
+    const htDuration = room.settings.halfTimeDuration || 15;
+    
+    io.to(roomCode).emit('halfTimeStarted', htDuration, room.matchState.players);
+    setTimeout(() => { startMatchPhase(roomCode, true); }, htDuration * 1000);
 }
 
 const PORT = process.env.PORT || 3000;
