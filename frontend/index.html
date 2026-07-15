@@ -44,32 +44,38 @@
         .event-highlight { color: #ff9f43; text-shadow: 1px 1px 5px black; font-size: 32px; font-weight: 900;}
 
         .mini-pitch {
-            width: 160px; 
-            height: 220px; 
+            width: 260px;  /* 기존 160px에서 약 1.6배 크기 증가! */
+            height: 360px; /* 기존 220px에서 비율에 맞춰 크기 증가! */
             background: #20bf6b; 
-            border: 2px solid white;
-            position: relative; 
-            margin: 15px auto; 
-            border-radius: 5px; 
+            border: 3px solid white; /* 크기가 커진 만큼 테두리도 약간 굵게 */
+            
+            /* ★ 핵심: 가운데 정렬을 풀고 화면 우측 중간에 고정시킵니다 */
+            position: absolute; 
+            right: 8%; /* 화면 오른쪽 끝에서 8%만큼 떨어진 곳 (왼쪽으로 하려면 left: 8%; 로 변경) */
+            top: 50%; /* 세로 기준 한가운데 */
+            transform: translateY(-50%); /* 세로 중앙 정렬을 완벽하게 맞추는 마법의 코드 */
+            
+            border-radius: 8px; 
             overflow: hidden;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.5); /* 그림자도 더 깊고 고급스럽게 */
         }
+
         .mini-node {
             position: absolute; 
-            width: 22px; 
-            height: 22px; 
+            width: 32px;  /* 축구장이 커진 만큼 선수 아이콘 크기도 증가 (기존 22px) */
+            height: 32px; 
             background: #eb3b5a;
             color: white; 
             border-radius: 50%; 
-            font-size: 9px; 
+            font-size: 12px; /* 글씨 크기도 더 잘 보이게 증가 (기존 9px) */
             font-weight: bold;
             display: flex;
             align-items: center; 
             justify-content: center;
             transform: translate(-50%, -50%); 
-            border: 1.5px solid white;
-            box-shadow: 1px 1px 3px rgba(0,0,0,0.5);
-            transition: all 0.3s ease; /* 위치 이동 시 부드러운 애니메이션 효과 */
+            border: 2px solid white;
+            box-shadow: 1px 2px 4px rgba(0,0,0,0.5);
+            transition: all 0.3s ease; 
         }
 
         
