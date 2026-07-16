@@ -377,7 +377,7 @@
 
         function placePlayer(slotId, slotElement) {
             if(!currentDraftPlayer || slotElement.classList.contains('player-placed')) return;
-            slotElement.dataset.name = currentDraftPlayer.name.substring(0, 4);
+            slotElement.dataset.name = currentDraftPlayer.name.substring(0, 5);
             slotElement.classList.add('player-placed');
             socket.emit('playerPlaced', myRoomCode, slotId, currentDraftPlayer);
             currentDraftPlayer = null;
