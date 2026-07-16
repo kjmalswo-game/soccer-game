@@ -981,11 +981,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let d = Math.sqrt(dx*dx + dy*dy) || 1;
                             
                             // 충돌 반경을 살짝 넓혀서 겹치기 전에 경합 판정 발동
-                            if (d < 1.5) { 
+                            if (d < 1.1) { 
                                 if (p.team === other.team) {
-                                    // 같은 팀끼리만 미세하게 밀어냄 (길막 방지)
-                                    let repelForce = (d < 0.5) ? 0.8 : 0.1;
-                                    let repel = (1.5 - d) * repelForce;
+                                    // 같은 팀끼리 길막 방지 거리도 축소 (0.5 -> 0.3 / 1.5 -> 1.1)
+                                    let repelForce = (d < 0.3) ? 0.8 : 0.1;
+                                    let repel = (1.1 - d) * repelForce;
                                     targetX += (dx / d) * repel; targetY += (dy / d) * repel;
                                 } else {
                                     // 적팀과의 경합 (움찔거림의 주범이던 기본 밀어내기 로직 삭제)
@@ -1085,7 +1085,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             state.players.forEach(p => {
                 // 4.0가 현재 다이빙 시 팔을 뻗는 범위입니다.
                 // 슈팅을 너무 못 막는다 싶으면 이 수치를 5.5나 6.5로 늘려주세요. 블랙홀처럼 빨아들여 막습니다.
-                let touchRadius = p.role === 'GK' ? (state.ball.shotTicks > 0 ? 4.0 : 3.0) : 2.5;
+                let touchRadius = p.role === 'GK' ? (state.ball.shotTicks > 0 ? 4.0 : 3.0) : 1.8;
                 let distToBallAct = getDistance(p.x, p.y, state.ball.x, state.ball.y);
                 let isBallInAir = (state.ball.airTicks && state.ball.airTicks > 0);
                 let dir = (p.team === leftTeam) ? 1 : -1;
