@@ -29,7 +29,7 @@
             top: 18px; /* 원 밑으로 살짝 내림 */
             left: 50%;
             transform: translateX(-50%); /* 좌우 정중앙 정렬 */
-            font-size: 11.5px;
+            font-size: 10px;
             font-weight: 900;
             color: #ffffff;
             /* 잔디나 선수끼리 겹쳐도 100% 보이도록 뚜렷한 검은색 아웃라인 부여 */
@@ -407,7 +407,7 @@
 
             const ballEl = document.createElement('div');
             ballEl.id = 'match-ball';
-            ballEl.style.cssText = `will-change: left, top; width: 4px; height: 4px; background: white; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 1.5px solid black;`;
+            ballEl.style.cssText = `will-change: left, top; width: 6px; height: 6px; background: white; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 1.5px solid black;`;
             pitch.appendChild(ballEl);
 
             matchState.players.forEach(player => {
