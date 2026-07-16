@@ -323,7 +323,7 @@
             popup.classList.remove('popup-minimized');
             document.getElementById('draft-player-name').innerText = player.name;
             let pDef = (player.stats.def !== undefined) ? player.stats.def : 80;
-            document.getElementById('draft-player-stats').innerText = `스피드: ${player.stats.spd} | 골 결정력: ${player.stats.sht} | 패스: ${player.stats.pas} | 수비(피지컬): ${pDef}`;
+            document.getElementById('draft-player-stats').innerText = `스피드: ${player.stats.spd} | 골 결정력: ${player.stats.sht} | 패스: ${player.stats.pas} | 피지컬: ${pDef}`;
             setTimeout(() => popup.classList.add('popup-minimized'), 2000);
         }
 
