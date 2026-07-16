@@ -300,6 +300,42 @@ io.on('connection', (socket) => {
         io.to(roomCode).emit('formationUpdated', teamId, state.players);
     });
 
+    socket.on('returnToLobby', (roomCode) => {
+        const room = rooms[roomCode];
+        if (!room) return;
+
+        // 이미 로비로 돌아간 상태가 아닐 때만 1회 처리 (중복 방지)
+        if (room.state !== 'lobby') {
+            room.state = 'lobby';
+            room.draftCount = 0;
+            room.availablePlayers = [...db.players]; // 선수풀 100명 원상복구
+            
+            delete room.matchState;
+            delete room.currentDraft;
+            if (room.matchInterval) clearInterval(room.matchInterval);
+            if (room.draftTimeout) clearTimeout(room.draftTimeout);
+
+            // 각 플레이어의 준비 상태와 소유 팀 데이터 초기화
+            Object.keys(room.players).forEach(key => {
+                let p = room.players[key];
+                
+                if (key === 'dummy_ai') {
+                    p.ready = true; // 🤖 000, 111 모드의 AI는 늘 준비 완료 상태 유지
+                    // 다음 판을 위해 AI의 포메이션을 새롭게 랜덤 부여!
+                    const formationKeys = Object.keys(db.formations);
+                    p.formation = formationKeys[Math.floor(Math.random() * formationKeys.length)];
+                } else {
+                    p.ready = false; 
+                }
+                
+                p.team = []; // 뽑았던 선수들 몰수
+            });
+            
+            // 방 안에 있는 두 명 모두에게 로비 화면으로 돌아가라고 핑 발송
+            io.to(roomCode).emit('returnedToLobby');
+        }
+    });
+    
     socket.on('disconnect', () => {
         for (const roomCode in rooms) {
             const room = rooms[roomCode];
