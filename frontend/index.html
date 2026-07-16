@@ -310,7 +310,7 @@
                 const slot = document.createElement('div');
                 slot.className = 'player-node'; slot.id = `slot-${index}`;
                 slot.style.left = pos.y + '%'; slot.style.top = (100 - pos.x) + '%';
-                slot.innerText = pos.id;
+                slot.dataset.name = pos.id;
                 slot.onclick = () => placePlayer(index, slot);
                 pitch.appendChild(slot);
             });
@@ -377,7 +377,7 @@
 
         function placePlayer(slotId, slotElement) {
             if(!currentDraftPlayer || slotElement.classList.contains('player-placed')) return;
-            slotElement.innerText = currentDraftPlayer.name.substring(0, 4);
+            slotElement.dataset.name = currentDraftPlayer.name.substring(0, 4);
             slotElement.classList.add('player-placed');
             socket.emit('playerPlaced', myRoomCode, slotId, currentDraftPlayer);
             currentDraftPlayer = null;
@@ -390,7 +390,7 @@
         socket.on('autoPlaced', (slotId, playerInfo) => {
             const slotElement = document.getElementById(`slot-${slotId}`);
             if(slotElement && !slotElement.classList.contains('player-placed')) {
-                slotElement.innerText = playerInfo.name.substring(0, 4);
+                slotElement.dataset.name = playerInfo.name.substring(0, 4);
                 slotElement.classList.add('player-placed');
             }
             currentDraftPlayer = null; 
@@ -421,7 +421,7 @@
                 else { el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a'; }
                 if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90)) el.style.border = '1.5px solid #f1c40f'; 
 
-                el.innerText = player.name.substring(0, 4);
+                el.dataset.name = player.name.substring(0, 4);
                 pitch.appendChild(el);
             });
         });
@@ -517,7 +517,7 @@
                 el.style.top = (100 - relX) + '%';
                 
                 el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a';
-                el.innerText = player.name.substring(0, 4);
+                el.dataset.name = player.name.substring(0, 4);
                 el.draggable = true; el.dataset.id = player.id; el.dataset.team = player.team;
 
                 el.addEventListener('dragstart', (e) => { draggedNode = el; e.dataTransfer.effectAllowed = "move"; });
