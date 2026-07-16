@@ -390,7 +390,7 @@
         socket.on('autoPlaced', (slotId, playerInfo) => {
             const slotElement = document.getElementById(`slot-${slotId}`);
             if(slotElement && !slotElement.classList.contains('player-placed')) {
-                slotElement.dataset.name = playerInfo.name.substring(0, 4);
+                slotElement.dataset.name = playerInfo.name;
                 slotElement.classList.add('player-placed');
             }
             currentDraftPlayer = null; 
@@ -421,7 +421,7 @@
                 else { el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a'; }
                 if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90)) el.style.border = '1.5px solid #f1c40f'; 
 
-                el.dataset.name = player.name.substring(0, 4);
+                el.dataset.name = player.name;
                 pitch.appendChild(el);
             });
         });
@@ -517,7 +517,7 @@
                 el.style.top = (100 - relX) + '%';
                 
                 el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a';
-                el.dataset.name = player.name.substring(0, 4);
+                el.dataset.name = player.name;
                 el.draggable = true; el.dataset.id = player.id; el.dataset.team = player.team;
 
                 el.addEventListener('dragstart', (e) => { draggedNode = el; e.dataTransfer.effectAllowed = "move"; });
