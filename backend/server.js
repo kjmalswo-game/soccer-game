@@ -744,9 +744,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             else { targetX = 50 - (dir * 38) + organicX; targetY = p.baseY; } 
                         } else {
                             // 수비하는 팀 (빠르게 복귀)
-                            if (p.role === 'FW') { targetX = 50 + (dir * 7) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 + (dir * 3) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'DF') { targetX = 50 - (dir * 7) + organicX; targetY = p.baseY; }
+                            if (p.role === 'FW') { targetX = 50 + (dir * 20) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'DF') { targetX = 50 - (dir * 6) + organicX; targetY = p.baseY; }
                         }
                     }
                     else if (state.phase === 'throw_in') {
