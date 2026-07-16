@@ -540,10 +540,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 state.players.forEach(e => { if (e.team !== p.team) { let d = getDistance(m.x, m.y, e.x, e.y); if(d < minEnemyDist) minEnemyDist = d; } });
                                 
                                 let forwardDist = (p.team === leftTeam) ? (m.x - p.x) : (p.x - m.x);
-                                let score = minEnemyDist * 10; 
-                                if (m.y < 20 || m.y > 80) score += 200; 
-                                if (forwardDist > 40) score += 150;     
-                                if (score > maxScore && minEnemyDist > 12) { maxScore = score; bestMate = m; }
+                                
+                                // 🎯 키퍼가 뒤에 있는 동료에게 던져서 코너킥이나 자책골이 나오는 것을 원천 차단합니다!
+                                // 무조건 키퍼보다 앞쪽(forwardDist > 5)에 있는 동료에게만 패스하도록 락을 겁니다.
+                                if (forwardDist > 5) {
+                                    let score = minEnemyDist * 10; 
+                                    if (m.y < 20 || m.y > 80) score += 200; 
+                                    if (forwardDist > 40) score += 150;     
+                                    if (score > maxScore && minEnemyDist > 12) { maxScore = score; bestMate = m; }
+                                }
                             }
                         });
 
