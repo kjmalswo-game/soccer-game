@@ -629,6 +629,31 @@
             showScreen('screen-result'); 
         });
 
+        // 🎯 로비로 돌아가기 버튼 클릭 시 서버로 요청
+        function returnToLobby() {
+            socket.emit('returnToLobby', myRoomCode);
+        }
+
+        // 🎯 서버에서 로비 귀환 명령을 받았을 때 UI 초기화 및 화면 전환
+        socket.on('returnedToLobby', () => {
+            if (timerInterval) clearInterval(timerInterval); // 겉도는 타이머 정리
+            currentDraftPlayer = null;
+            
+            // 준비 버튼 원상복구
+            const btn = document.getElementById('btn-ready'); 
+            btn.innerText = "준비 완료"; btn.disabled = false; btn.style.background = '#0fb9b1';
+            
+            // 드래프트 구장 및 매치 구장 찌꺼기 청소
+            const draftPitch = document.getElementById('draft-pitch');
+            if (draftPitch) draftPitch.innerHTML = '';
+            
+            const matchPitch = document.getElementById('match-pitch');
+            if (matchPitch) matchPitch.querySelectorAll('.player-node, #match-ball').forEach(el => el.remove());
+
+            // 로비 화면으로 전환 (드롭다운 등 방 설정 내역은 그대로 유지됨!)
+            showScreen('screen-lobby'); 
+        });
+
         socket.on('error', (msg) => { alert(msg); });
     </script>
 </body>
