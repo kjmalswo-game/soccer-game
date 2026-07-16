@@ -687,9 +687,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         // dir은 선수의 소속 팀(left/right)에 따라 1 또는 -1로 이미 상단에서 정의되어 있음
                         // 이를 이용해 '50 - (dir * 오프셋)' 공식을 쓰면, 어느 팀이든 무조건 하프라인(50)을 넘지 않고 자기 진영에 위치하게 됨
                         if (p.team === state.possessionTeam) {
-                            // 공격하는 팀 (골킥 차는 팀): 무조건 하프라인을 넘지 않고 자기 진영에 대기
-                            if (p.role === 'FW') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; } // 하프라인 바로 뒤에서 롱볼 대비
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 17) + organicX; targetY = p.baseY; } // 수비와 공격수 사이에서 빌드업 준비
+                            // 공격하는 팀 (골킥 차는 팀):
+                            if (p.role === 'FW') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 13) + organicX; targetY = p.baseY; } // 수비와 공격수 사이에서 빌드업 준비
                             else { targetX = 50 - (dir * 27) + organicX; targetY = p.baseY; } // 키퍼 앞쪽 페널티박스 외곽에 수비라인 형성
                         } else {
                             // 수비하는 팀 (골킥 막는 팀): 자기 진영에서 대형을 갖추고 세컨볼 경합 준비
@@ -702,13 +702,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         if (p.team === state.possessionTeam) {
                             // 캐칭한 팀 (공격 전개 준비) - 보통 역습을 위해 골킥보다 라인을 높게 올립니다.
                             if (p.role === 'FW') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; } // 하프라인 넘어서 대기
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 20) + organicX; targetY = p.baseY; } 
-                            else { targetX = 50 - (dir * 30) + organicX; targetY = p.baseY; } 
+                            else if (p.role === 'MF') { targetX = 50 - (dir * 15) + organicX; targetY = p.baseY; } 
+                            else { targetX = 50 - (dir * 33) + organicX; targetY = p.baseY; } 
                         } else {
                             // 수비하는 팀 (빠르게 복귀)
-                            if (p.role === 'FW') { targetX = 50 + (dir * 17) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 + (dir * 8) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'DF') { targetX = 50 - (dir * 15) + organicX; targetY = p.baseY; }
+                            if (p.role === 'FW') { targetX = 50 + (dir * 25) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = 50 + (dir * 15) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'DF') { targetX = 50 - (dir * 7) + organicX; targetY = p.baseY; }
                         }
                     }
                     else if (state.phase === 'throw_in') {
@@ -1062,9 +1062,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
                 if (state.phase !== 'play') moveSpeed *= 5.0;
                 // 골키퍼 반응속도
-                // 2.0은 평소보다 2배 빠르게 몸을 날린다는 뜻입니다.
                 // 대포알 슛을 따라가게 하려면 이 수치를 4.0, 5.0 등으로 확 올려주세요.
-                if (p.role === 'GK' && p.isDiving) moveSpeed *= 2.0; // 다이빙 시 폭발적인 속도로 몸을 날림
+                if (p.role === 'GK' && p.isDiving) moveSpeed *= 3.2; // 다이빙 시 폭발적인 속도로 몸을 날림
 
                 if (p.stunTicks && p.stunTicks > 0) {
                     p.stunTicks--;
@@ -1125,9 +1124,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     if (p.role === 'GK') {
                         let isInBox = Math.abs(p.x - (p.team === leftTeam ? 0 : 100)) < 20 && p.y > 20 && p.y < 80;
                         if (isInBox && state.phase === 'play' && state.setPieceTimer <= 0) {
-                            // 0.4는 45% 확률로 공을 쳐내고(루즈볼 유도), 55% 확률로 안전하게 잡는다는 뜻입니다.
+                            // 0.4는 40% 확률로 공을 쳐내고(루즈볼 유도), 60% 확률로 안전하게 잡는다는 뜻입니다.
                             // 0.7로 바꾸면 70% 확률로 공을 쳐내서 루즈볼(세컨볼) 상황이 더 자주 발생해 박진감이 넘치게 됩니다.
-                            if (state.ball.shotTicks > 0 && Math.random() < 0.45) {
+                            if (state.ball.shotTicks > 0 && Math.random() < 0.40) {
                                 io.to(roomCode).emit('playSound', 'kick');
                                 state.ball.vx = dir * (3 + Math.random() * 4);
                                 state.ball.vy = (Math.random() - 0.5) * 10;
