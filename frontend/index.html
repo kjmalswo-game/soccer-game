@@ -381,7 +381,7 @@
 
             const ballEl = document.createElement('div');
             ballEl.id = 'match-ball';
-            ballEl.style.cssText = `will-change: left, top; width: 6px; height: 6px; background: white; border-radius: 30%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 1.5px solid black;`;
+            ballEl.style.cssText = `will-change: left, top; width: 4px; height: 4px; background: white; border-radius: 50%; position: absolute; transform: translate(-50%, -50%); z-index: 10; transition: left 0.1s linear, top 0.1s linear; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border: 1.5px solid black;`;
             pitch.appendChild(ballEl);
 
             matchState.players.forEach(player => {
