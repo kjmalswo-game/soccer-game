@@ -728,32 +728,31 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     } 
                     // ★ 골킥 전술 준비 상황 포지셔닝
                     else if (state.phase === 'goal_kick') {
-                        // 🎯 절대 좌표(50) 기준을 폐기하고, 유저가 설정한 포메이션 좌표(p.baseX)를 기준으로 움직이도록 수정!
                         if (p.team === state.possessionTeam) {
-                            // 공격하는 팀 (골킥 차는 팀): 공을 받기 위해 전체적으로 자기 진영 쪽으로 조금씩 내려옵니다.
-                            if (p.role === 'FW') { targetX = p.baseX + (dir * 5) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 4) + organicX; targetY = p.baseY; }
-                            else { targetX = p.baseX - (dir * 7) + organicX; targetY = p.baseY; } // 수비수도 키퍼 근처로 내려옴
+                            // 공격하는 팀 (골킥 받는 팀): 공을 받기 위해 키퍼 앞쪽으로 적당히 내려옴
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 5) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 5) + organicX; targetY = p.baseY; }
+                            else { targetX = p.baseX + (dir * 5) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
                         } else {
-                            // 수비하는 팀 (골킥 막는 팀): 상대방을 압박하기 위해 라인을 전체적으로 위로 끌어올립니다.
-                            if (p.role === 'FW') { targetX = p.baseX + (dir * 30) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 30) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'DF') { targetX = p.baseX + (dir * 30) + organicX; targetY = p.baseY; }
+                            // 수비하는 팀 (상대 골킥 압박): 라인을 적당히 위로 올림
+                            if (p.role === 'FW') { targetX = p.baseX + (dir * 10) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 5) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'DF') { targetX = p.baseX + (dir * 5) + organicX; targetY = p.baseY; }
                         }
                     }
                     else if (state.phase === 'gk_hold') {
-                        let pinchedY = 50 + (p.baseY - 50) * 0.3 + organicY;
+                        let pinchedY = 50 + (p.baseY - 50) * 0.4 + organicY;
                         
                         if (p.team === state.possessionTeam) {
-                            // 캐칭한 팀 (역습 전개 준비): 빠르게 치고 나가기 위해 전방으로 쇄도합니다.
-                            if (p.role === 'FW') { targetX = p.baseX - (dir * 7) + organicX; targetY = pinchedY; } 
-                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 8) + organicX; targetY = pinchedY; } 
-                            else { targetX = p.baseX - (dir * 30) + organicX; targetY = pinchedY; } 
+                            // 캐칭한 팀 (역습 전개 준비): 라인을 올림
+                            if (p.role === 'FW') { targetX = p.baseX + (dir * 15) + organicX; targetY = pinchedY; } 
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 10) + organicX; targetY = pinchedY; } 
+                            else { targetX = p.baseX + (dir * 5) + organicX; targetY = pinchedY; } 
                         } else {
-                            // 수비하는 팀 (빠르게 복귀): 역습을 막기 위해 미친듯이 자기 진영으로 뒷걸음질 칩니다.
-                            if (p.role === 'FW') { targetX = p.baseX + (dir * 24) + organicX; targetY = pinchedY; }
-                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 10) + organicX; targetY = pinchedY; }
-                            else if (p.role === 'DF') { targetX = p.baseX - (dir * 6) + organicX; targetY = pinchedY; }
+                            // 🎯 수비하는 팀 (빠르게 복귀): 오프셋을 대폭 줄여서 자기 골대에 처박히는 버그 완벽 차단!
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; }
+                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; }
+                            else if (p.role === 'DF') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; }
                         }
                     }
                     else if (state.phase === 'throw_in') {
