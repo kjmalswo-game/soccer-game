@@ -720,33 +720,32 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     } 
                     // ★ 골킥 전술 준비 상황 포지셔닝
                     else if (state.phase === 'goal_kick') {
-                        // dir은 선수의 소속 팀(left/right)에 따라 1 또는 -1로 이미 상단에서 정의되어 있음
-                        // 이를 이용해 '50 - (dir * 오프셋)' 공식을 쓰면, 어느 팀이든 무조건 하프라인(50)을 넘지 않고 자기 진영에 위치하게 됨
+                        // 🎯 절대 좌표(50) 기준을 폐기하고, 유저가 설정한 포메이션 좌표(p.baseX)를 기준으로 움직이도록 수정!
                         if (p.team === state.possessionTeam) {
-                            // 공격하는 팀 (골킥 차는 팀):
-                            if (p.role === 'FW') { targetX = 50 + (dir * 3) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 17) + organicX; targetY = p.baseY; } // 수비와 공격수 사이에서 빌드업 준비
-                            else { targetX = 50 - (dir * 34) + organicX; targetY = p.baseY; } // 키퍼 앞쪽 페널티박스 외곽에 수비라인 형성
+                            // 공격하는 팀 (골킥 차는 팀): 공을 받기 위해 전체적으로 자기 진영 쪽으로 조금씩 내려옵니다.
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 10) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 15) + organicX; targetY = p.baseY; }
+                            else { targetX = p.baseX - (dir * 5) + organicX; targetY = p.baseY; } // 수비수도 키퍼 근처로 내려옴
                         } else {
-                            // 수비하는 팀 (골킥 막는 팀): 자기 진영에서 대형을 갖추고 세컨볼 경합 준비
-                            if (p.role === 'FW') { targetX = 50 + (dir * 20) + organicX; targetY = p.baseY; } // 하프라인 선상에서 세컨볼 노림
-                            else if (p.role === 'MF') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; } // 자기 진영 낮은 위치
-                            else if (p.role === 'DF') { targetX = 50 - (dir * 16) + organicX; targetY = p.baseY; } // 최후방 수비 대형 유지
+                            // 수비하는 팀 (골킥 막는 팀): 상대방을 압박하기 위해 라인을 전체적으로 위로 끌어올립니다.
+                            if (p.role === 'FW') { targetX = p.baseX + (dir * 20) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 15) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'DF') { targetX = p.baseX + (dir * 10) + organicX; targetY = p.baseY; }
                         }
                     }
                     else if (state.phase === 'gk_hold') {
-                        // 0.35 조정
-                        let pinchedY = 50 + (p.baseY - 50) * 0.35 + organicY;
+                        let pinchedY = 50 + (p.baseY - 50) * 0.55 + organicY;
+                        
                         if (p.team === state.possessionTeam) {
-                            // 캐칭한 팀 (공격 전개 준비) - 보통 역습을 위해 골킥보다 라인을 높게 올립니다.
-                            if (p.role === 'FW') { targetX = 50 - (dir * 6) + organicX; targetY = p.baseY; } // 하프라인 넘어서 대기
-                            else if (p.role === 'MF') { targetX = 50 - (dir * 25) + organicX; targetY = p.baseY; } 
-                            else { targetX = 50 - (dir * 38) + organicX; targetY = p.baseY; } 
+                            // 캐칭한 팀 (역습 전개 준비): 빠르게 치고 나가기 위해 전방으로 쇄도합니다.
+                            if (p.role === 'FW') { targetX = p.baseX + (dir * 15) + organicX; targetY = pinchedY; } 
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 10) + organicX; targetY = pinchedY; } 
+                            else { targetX = p.baseX + (dir * 5) + organicX; targetY = pinchedY; } 
                         } else {
-                            // 수비하는 팀 (빠르게 복귀)
-                            if (p.role === 'FW') { targetX = 50 + (dir * 20) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'DF') { targetX = 50 - (dir * 6) + organicX; targetY = p.baseY; }
+                            // 수비하는 팀 (빠르게 복귀): 역습을 막기 위해 미친듯이 자기 진영으로 뒷걸음질 칩니다.
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 15) + organicX; targetY = pinchedY; }
+                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 20) + organicX; targetY = pinchedY; }
+                            else if (p.role === 'DF') { targetX = p.baseX - (dir * 25) + organicX; targetY = pinchedY; }
                         }
                     }
                     else if (state.phase === 'throw_in') {
@@ -1178,6 +1177,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 state.eventText = state.ball.shotTicks > 0 ? "🧤 엄청난 선방 (캐칭)!" : "키퍼 선방!"; 
                                 state.ball.shotTicks = 0;
                                 p.cooldown = 20;
+                                
+                                // 🎯 치명적 버그 픽스: 키퍼가 공을 잡는 순간 소유권을 수비팀(키퍼팀)으로 즉시 가져옵니다!
+                                state.possessionTeam = p.team;
                             }
                         } else {
                             io.to(roomCode).emit('playSound', 'kick'); state.ball.vx = dir * 6.0; state.ball.vy = (p.y > 50) ? 3.0 : -3.0; p.cooldown = 15;
@@ -1309,15 +1311,19 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                         score += 3500; // 깊은 곳에 도달했을 때만 점수를 퍼주어 크로스 유도
                                         isCross = true;
                                     }
-                                    // 깊지 않으면 가산점이 없어서 자동으로 패스 대신 드리블을 선택함
                                 }
 
+                                let isMWing = m.y < 25 || m.y > 75; 
+                                // 공격 진영에서 측면 넓은 빈 공간(수비거리 6 이상)으로 전진하는 동료가 있으면 무조건 점수 팍팍 퍼줌!
+                                if (inAttackingHalf && isMWing && forwardDist > 0 && minEnemyDistToM > 6 && !laneBlocked) {
+                                    score += 1500; // 윙어/공격수의 깐깐한 드리블 커트라인(800점)을 뚫고 측면으로 패스하게 만듦
+                                }
                                 if (m.isMakingRun && minEnemyDistToM > 4 && !laneBlocked) {
-                                    let isMWing = m.y < 25 || m.y > 75; 
                                     if (isMWing) {
-                                        // 🎯 [수정 2] 미드필더가 윙어에게 뿌릴 때만 특대 가산점, 다른 포지션에선 논스톱 스루 남발 금지
+                                        // 미드필더의 킬패스는 최고점(2500)을 유지하고, 
+                                        // 공격수 등 다른 포지션이 측면 침투 동료에게 내주는 패스 점수도 기존 400 -> 1200으로 대폭 상승시켜 적극적인 오버랩 연계 유도!
                                         if (p.role === 'MF') score += 2500;
-                                        else score += 400; 
+                                        else score += 1200; 
                                     } else {
                                         score += inAttackingHalf ? (pPas * 12) : (pPas * 8); 
                                     }
