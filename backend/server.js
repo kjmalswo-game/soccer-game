@@ -687,7 +687,15 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 let organicY = Math.cos(state.ticks / 18 + p.baseY) * 2.5;
                 
                 if (state.phase !== 'play' || state.setPieceTimer > 0) {
-                    if (p.role === 'GK') { targetX = (p.team===leftTeam?5:95); targetY = 50; }
+                    if (p.role === 'GK') { 
+                        // 🎯 키퍼가 공을 잡았을 때는 뒤로 안 가고, 페널티 박스 외곽(전방)으로 천천히 걸어나오며 킥을 준비합니다.
+                        if (state.phase === 'gk_hold' && state.gkHolder && p.id === state.gkHolder.id) {
+                            targetX = (p.team === leftTeam) ? 14 : 86;
+                            targetY = 50;
+                        } else {
+                            targetX = (p.team===leftTeam?5:95); targetY = 50; 
+                        }
+                    }
                     else if (state.phase === 'throw_in' && p.id === state.throwerId) { targetX = state.ball.x; targetY = state.ball.y; }
                     else if (state.phase === 'corner' && p.id === state.kickerId) { targetX = state.ball.x; targetY = state.ball.y; }
                     else if (state.phase === 'corner') {
@@ -724,22 +732,22 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         if (p.team === state.possessionTeam) {
                             // 공격하는 팀 (골킥 차는 팀): 공을 받기 위해 전체적으로 자기 진영 쪽으로 조금씩 내려옵니다.
                             if (p.role === 'FW') { targetX = p.baseX + (dir * 5) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 12) + organicX; targetY = p.baseY; }
-                            else { targetX = p.baseX - (dir * 24) + organicX; targetY = p.baseY; } // 수비수도 키퍼 근처로 내려옴
+                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 4) + organicX; targetY = p.baseY; }
+                            else { targetX = p.baseX - (dir * 7) + organicX; targetY = p.baseY; } // 수비수도 키퍼 근처로 내려옴
                         } else {
                             // 수비하는 팀 (골킥 막는 팀): 상대방을 압박하기 위해 라인을 전체적으로 위로 끌어올립니다.
-                            if (p.role === 'FW') { targetX = p.baseX + (dir * 20) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 7) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'DF') { targetX = p.baseX - (dir * 12) + organicX; targetY = p.baseY; }
+                            if (p.role === 'FW') { targetX = p.baseX + (dir * 30) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 30) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'DF') { targetX = p.baseX + (dir * 30) + organicX; targetY = p.baseY; }
                         }
                     }
                     else if (state.phase === 'gk_hold') {
-                        let pinchedY = 50 + (p.baseY - 50) * 0.35 + organicY;
+                        let pinchedY = 50 + (p.baseY - 50) * 0.3 + organicY;
                         
                         if (p.team === state.possessionTeam) {
                             // 캐칭한 팀 (역습 전개 준비): 빠르게 치고 나가기 위해 전방으로 쇄도합니다.
-                            if (p.role === 'FW') { targetX = p.baseX - (dir * 10) + organicX; targetY = pinchedY; } 
-                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 20) + organicX; targetY = pinchedY; } 
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 7) + organicX; targetY = pinchedY; } 
+                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 8) + organicX; targetY = pinchedY; } 
                             else { targetX = p.baseX - (dir * 30) + organicX; targetY = pinchedY; } 
                         } else {
                             // 수비하는 팀 (빠르게 복귀): 역습을 막기 위해 미친듯이 자기 진영으로 뒷걸음질 칩니다.
