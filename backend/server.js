@@ -699,8 +699,8 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         }
                     }
                     else if (state.phase === 'gk_hold') {
-                        // 0.5 조정
-                        let pinchedY = 50 + (p.baseY - 50) * 0.5 + organicY;
+                        // 0.35 조정
+                        let pinchedY = 50 + (p.baseY - 50) * 0.35 + organicY;
                         if (p.team === state.possessionTeam) {
                             // 캐칭한 팀 (공격 전개 준비) - 보통 역습을 위해 골킥보다 라인을 높게 올립니다.
                             if (p.role === 'FW') { targetX = 50 + (dir * 5) + organicX; targetY = p.baseY; } // 하프라인 넘어서 대기
