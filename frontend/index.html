@@ -419,7 +419,7 @@
                 
                 if (player.role === 'GK') { el.style.background = '#f39c12'; el.style.border = '1px solid white'; } 
                 else { el.style.background = (player.team === 1) ? '#3867d6' : '#eb3b5a'; }
-                if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90)) el.style.border = '1.5px solid #f1c40f'; 
+                if(player.role !== 'GK' && (player.stats.spd >= 90 || player.stats.sht >= 90 || player.stats.pas >= 90 || player.stats.def >= 90)) el.style.border = '1.5px solid #f1c40f';
 
                 el.dataset.name = player.name;
                 pitch.appendChild(el);
