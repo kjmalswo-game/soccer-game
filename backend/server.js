@@ -735,9 +735,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     else if (state.phase === 'goal_kick') {
                         if (p.team === state.possessionTeam) {
                             // 공격하는 팀 (골킥 받는 팀): 공을 받기 위해 키퍼 앞쪽으로 적당히 내려옴
-                            if (p.role === 'FW') { targetX = p.baseX - (dir * 5) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 5) + organicX; targetY = p.baseY; }
-                            else { targetX = p.baseX + (dir * 5) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 10) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 10) + organicX; targetY = p.baseY; }
+                            else { targetX = p.baseX - (dir * 10) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
                         } else {
                             // 수비하는 팀 (상대 골킥 압박): 라인을 적당히 위로 올림
                             if (p.role === 'FW') { targetX = p.baseX + (dir * 10) + organicX; targetY = p.baseY; }
@@ -750,14 +750,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         
                         if (p.team === state.possessionTeam) {
                             // 캐칭한 팀 (역습 전개 준비): 라인을 올림
-                            if (p.role === 'FW') { targetX = p.baseX + (dir * 15) + organicX; targetY = pinchedY; } 
-                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 10) + organicX; targetY = pinchedY; } 
-                            else { targetX = p.baseX + (dir * 5) + organicX; targetY = pinchedY; } 
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; } 
+                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; } 
+                            else { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; } 
                         } else {
                             // 🎯 수비하는 팀 (빠르게 복귀): 오프셋을 대폭 줄여서 자기 골대에 처박히는 버그 완벽 차단!
-                            if (p.role === 'FW') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; }
-                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; }
-                            else if (p.role === 'DF') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; }
+                            if (p.role === 'FW') { targetX = p.baseX + (dir * 10) + organicX; targetY = pinchedY; }
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 5) + organicX; targetY = pinchedY; }
+                            else if (p.role === 'DF') { targetX = p.baseX + (dir * 5) + organicX; targetY = pinchedY; }
                         }
                     }
                     else if (state.phase === 'throw_in') {
