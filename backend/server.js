@@ -1193,12 +1193,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             // 0.7로 바꾸면 70% 확률로 공을 쳐내서 루즈볼(세컨볼) 상황이 더 자주 발생해 박진감이 넘치게 됩니다.
                             if (state.ball.shotTicks > 0 && Math.random() < 0.40) {
                                 io.to(roomCode).emit('playSound', 'kick');
-                                state.ball.vx = dir * (3 + Math.random() * 4);
-                                state.ball.vy = (Math.random() - 0.5) * 10;
+                                // 🎯 펀칭 시 공이 튀는 강도를 대폭 줄여 페널티 박스 안쪽 루즈볼 상황 유도
+                                state.ball.vx = dir * (1.5 + Math.random() * 2.0); // 최대 7.0에서 3.5로 감소
+                                state.ball.vy = (Math.random() - 0.5) * 5.0; // 위아래로 튀는 범위도 반타작
                                 state.ball.shotTicks = 0;
                                 p.cooldown = 5;
                                 state.eventText = "🧤 슈퍼 세이브 (펀칭)!";
-                            } else {
+                            }
+                            else {
                                 // 안정적인 캐칭
                                 state.phase = 'gk_hold'; state.gkHolder = p; state.setPieceTimer = 15;
                                 state.ball.vx = 0; state.ball.vy = 0; state.ball.x = p.x; state.ball.y = p.y; 
@@ -1522,24 +1524,43 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let nextVy = centerDriveVy * 0.8; 
 
                         if (isWingerDrive) {
-                            // 🎯 박스 근처(파이널 서드)인지 판별
                             let isNearBox = (p.team === leftTeam && p.x > 80) || (p.team === rightTeam && p.x < 20);
+                            let currentBallSpeed = Math.sqrt(state.ball.vx**2 + state.ball.vy**2);
                             
-                            if (isNearBox) {
-                                // 1️⃣ 파이널 서드 진입: 발에 붙이는 드리블 (단, 기존보다 훨씬 빠르고 날카로운 컷인)
-                                nextVx = dir * (pSpd / 100) * 1.8; // 전진 속도 대폭 상향 (기존 1.02 -> 1.8)
-                                nextVy = (p.y < 50) ? 1.4 : -1.4;  // 안쪽으로 꺾어 들어가는 대각선 속도도 상향
+                            // 🎯 전방에 빈 공간(수비수와의 거리)이 얼마나 있는지 계산
+                            let forwardEnemies = state.players.filter(e => e.team !== p.team && e.role !== 'GK' && ((dir === 1 && e.x > p.x) || (dir === -1 && e.x < p.x)));
+                            let nearestEnemyDist = forwardEnemies.length > 0 ? Math.min(...forwardEnemies.map(e => getDistance(p.x, p.y, e.x, e.y))) : 999;
+                        
+                            // 1️⃣ 퍼스트 터치: 패스를 받았거나 공이 빠르게 굴러오면 일단 발밑에 잡아둠 (소유권 확보)
+                            if (currentBallSpeed > 1.5 && p.cooldown === 0) {
+                                nextVx = dir * (pSpd / 100) * 0.8; 
+                                nextVy = 0;
+                                p.cooldown = 1;
+                                state.eventText = "볼 터치 및 소유";
+                            } 
+                            // 2️⃣ 파이널 서드 진입: 폭발적이고 세밀한 컷인 (발에 붙이는 드리블 속도 상향)
+                            else if (isNearBox) {
+                                nextVx = dir * (pSpd / 100) * 2.2; // 기존 1.8 -> 2.2로 컷인 전진 속도 더욱 극대화
+                                nextVy = (p.y < 50) ? 1.8 : -1.8;  
                                 state.eventText = "⚡ 박스 진입 컷인!";
-                                p.cooldown = 1; // 발 밑에 두고 촘촘하게 컨트롤하여 수비를 벗겨냄
-                            } else {
-                                // 2️⃣ 측면 빈 공간: 길게 쳐놓고 달리는 '폭풍 치달 (Kick & Run)'
-                                nextVx = dir * (pSpd / 100) * 3.8; // 공을 앞쪽으로 멀리 뻥 차놓음 (기존 1.02 -> 3.8)
+                                p.cooldown = 1; 
+                            } 
+                            // 3️⃣ 측면 빈 공간: 짧게 쳐놓고 미친 듯이 따라가는 치달
+                            else if (nearestEnemyDist > 12) {
+                                nextVx = dir * (pSpd / 100) * 2.6; // 너무 멀리 차지 않게 강도 조절 (기존 3.8 -> 2.6)
                                 nextVy = 0; 
                                 state.eventText = "💨 터치라인 치달!";
+                                p.cooldown = 2; // 공을 차놓고 2틱 뒤에 다시 터치 (거리 짧아짐)
                                 
-                                // ★ 핵심: 2틱(0.2초) 동안 쿨타임을 걸어 다시 터치하지 못하게 강제함
-                                // 공이 혼자 굴러가는 동안 선수는 오프더볼 스프린트 속도로 공을 향해 미친 듯이 전력질주하게 됨!
-                                p.cooldown = 2; 
+                                // ★ 핵심 버그 해결: 공을 차고 나서도 선수가 스프린트 가속(1.8배속)을 받도록 플래그 강제 온!
+                                p.isMakingRun = true; 
+                            } 
+                            // 4️⃣ 수비가 바로 앞에 있을 때: 일반 돌파
+                            else {
+                                nextVx = dir * (pSpd / 100) * 1.4;
+                                nextVy = 0;
+                                state.eventText = "측면 돌파";
+                                p.cooldown = 0;
                             }
                         }
                         // ★ 역습 및 단독 돌파 전용 움직임 (빈 공간으로 쇄도)
