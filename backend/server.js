@@ -965,6 +965,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                         let isOpponentWinger = ballCarrier && (ballCarrier.y < 25 || ballCarrier.y > 75);
 
+                        // 🚨 윙어 전담 압박을 위한 거리 변수
+                        let pressDist0 = isOpponentWinger ? 35 : 18; 
+                        let pressDist1 = isOpponentWinger ? 20 : 12;
+                        
                         if (isLooseBall && rank === 0) {
                             targetX = pTargetX + (p.id % 3 - 1) * 0.5; 
                             targetY = pTargetY + (p.id % 2 === 0 ? 0.5 : -0.5); 
