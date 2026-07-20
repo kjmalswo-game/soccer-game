@@ -937,16 +937,21 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         else if (p.role === 'MF') blockX = Math.max(25, Math.min(75, refBallX - (dir * 18)));
                         else if (p.role === 'DF') blockX = Math.max(10, Math.min(90, refBallX - (dir * 28)));
 
+                        let isOpponentWinger = ballCarrier && (ballCarrier.y < 25 || ballCarrier.y > 75);
+                        let pressDist0 = isOpponentWinger ? 35 : 18; // 윙어 상대로는 즉각적으로 압박 범위를 2배로 넓힘!
+                        let pressDist1 = isOpponentWinger ? 20 : 12; // 협력 수비 범위 상향
+
                         if (isLooseBall && rank === 0) {
                             targetX = pTargetX + (p.id % 3 - 1) * 0.5; 
                             targetY = pTargetY + (p.id % 2 === 0 ? 0.5 : -0.5); 
                             isPressing = true;
                         }
-                        else if (!isLooseBall && rank === 0 && distToBall < 18) { 
+                        else if (!isLooseBall && rank === 0 && distToBall < pressDist0) { 
                             targetX = state.ball.x; targetY = state.ball.y; isPressing = true; 
                         } 
-                        else if (!isLooseBall && rank === 1 && distToBall < 12) { 
+                        else if (!isLooseBall && rank === 1 && distToBall < pressDist1) { 
                             targetX = state.ball.x - (dir*4); targetY = state.ball.y; 
+                            if (isOpponentWinger) isPressing = true; // 윙어 상대로는 2순위 수비수도 적극적으로 뛰어붙음
                         } 
                         else { 
                             targetX = blockX; targetY = Math.max(10, Math.min(90, blockY)); 
@@ -1124,11 +1129,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 
                 let pSpd = (p.stats && p.stats.spd) ? p.stats.spd : 80;
                 let moveSpeed = (pSpd / 100) * 0.85; 
-                // 🏃‍♂️ 선수 스프린트 속도 대폭 상향 (유저 커스텀 수치 적용)
                 if (ballCarrier && p.id === ballCarrier.id) {
-                    moveSpeed *= 2.1; // 🎯 공을 잡은 상태의 돌파 속도를 미친 듯이 끌어올립니다.
+                    // 🚨 치달 밸런스 조정: 공을 잡은 상태의 기본 스프린트 최고 속도 소폭 하향 (2.1 -> 1.95)
+                    moveSpeed *= 1.95; 
                 } else if (isPressing || state.passTargetId === p.id || p.isMakingRun) {
-                    moveSpeed *= 1.8; // 🎯 일반 침투 및 압박 스프린트 속도도 상향
+                    moveSpeed *= 1.8; 
+                    // 🚨 수비수 추격 상향: 수비수가 압박(Pressing)하러 뛰어갈 때 속도 10% 추가 보너스!
+                    if (p.team !== attTeam && isPressing) moveSpeed *= 1.1; 
                 }
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
                 if (state.phase !== 'play' && state.phase !== 'gk_hold') {
@@ -1343,12 +1350,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                             // 코너 플래그 근처의 크로스/컷백 상황이 아닌 일반 전개 상황일 때
                             if (!isDeepZoneForCross) {
-                                if (isWingerPos && isReceiverCentral && enemiesNearReceiver >= 2) {
-                                    score -= 8000; // 1️⃣ 측면에서 중앙에 수비 2명 이상 있는 곳으로 패스 절대 금지
+                                // 🚨 파이널 서드(엔드라인) 진입 전 박스 안을 향한 얼리 크로스 원천 차단
+                                let isReceiverInBox = (p.team === leftTeam && m.x > 84 && m.y > 20 && m.y < 80) || (p.team === rightTeam && m.x < 16 && m.y > 20 && m.y < 80);
+                                if (isWingerPos && isReceiverInBox) {
+                                    score -= 9999; // 크로스 절대 금지! 라인을 타고 더 전진하거나 연계하도록 강제
+                                } else if (isWingerPos && isReceiverCentral && enemiesNearReceiver >= 2) {
+                                    score -= 8000; // 1️⃣ 측면에서 중앙에 수비 2명 이상 있는 곳으로 억지 패스 금지
                                 } else if (enemiesNearReceiver >= 3) {
-                                    score -= 6000; // 2️⃣ 측면/중앙 불문하고 수비가 3명 이상 에워싼 곳으로는 억지 패스 포기
+                                    score -= 6000; // 2️⃣ 측면/중앙 불문하고 수비가 3명 이상 에워싼 곳 패스 포기
                                 } else if (minEnemyDistToM < 4.5 && !m.isMakingRun) {
-                                    score -= 3500; // 3️⃣ 수비가 바짝 붙어있는데 빈 공간 침투도 안 하고 서 있는 동료에게 짬처리 금지
+                                    score -= 3500; // 3️⃣ 빈 공간 침투 안 하는 동료에게 짬처리 금지
                                 }
                             }
 
@@ -1624,10 +1635,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             }
                             // 3️⃣ 측면 빈 공간: 짧게 쳐놓고 미친 듯이 따라가는 치달
                             else if (nearestEnemyDist > 12) {
-                                nextVx = dir * (pSpd / 100) * 2.6; // 너무 멀리 차지 않게 강도 조절 (기존 3.8 -> 2.6)
+                                nextVx = dir * (pSpd / 100) * 2.3; // 🚨 치달 공 차는 강도(거리) 하향 (2.6 -> 2.3)
                                 nextVy = 0; 
                                 state.eventText = "💨 터치라인 치달!";
-                                p.cooldown = 2; // 공을 차놓고 2틱 뒤에 다시 터치 (거리 짧아짐)
+                                p.cooldown = 2;
                                 
                                 // ★ 핵심 버그 해결: 공을 차고 나서도 선수가 스프린트 가속(1.8배속)을 받도록 플래그 강제 온!
                                 p.isMakingRun = true; 
