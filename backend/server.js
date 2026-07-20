@@ -335,6 +335,17 @@ io.on('connection', (socket) => {
             io.to(roomCode).emit('returnedToLobby');
         }
     });
+
+    socket.on('togglePause', (roomCode) => {
+        const room = rooms[roomCode];
+        // 방이 존재하고, 매치가 진행 중이며, 테스트 모드(000 혹은 111)일 때만 작동하도록 락(Lock)을 겁니다.
+        if (room && room.matchState && (room.isTestMode || room.isDraftTestMode)) {
+            // 현재 일시정지 상태를 반대로 뒤집습니다. (true <-> false)
+            room.matchState.isPaused = !room.matchState.isPaused;
+            // 변경된 상태를 클라이언트로 보내 UI(버튼)를 업데이트합니다.
+            io.to(roomCode).emit('pauseToggled', room.matchState.isPaused);
+        }
+    });
     
     socket.on('disconnect', () => {
         for (const roomCode in rooms) {
