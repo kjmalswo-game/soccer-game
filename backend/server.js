@@ -748,9 +748,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     else if (state.phase === 'goal_kick') {
                         if (p.team === state.possessionTeam) {
                             // 공격하는 팀 (골킥 받는 팀): 공을 받기 위해 키퍼 앞쪽으로 적당히 내려옴
-                            if (p.role === 'FW') { targetX = p.baseX - (dir * 3) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 3) + organicX; targetY = p.baseY; }
-                            else { targetX = p.baseX - (dir * 2) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 6) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 6) + organicX; targetY = p.baseY; }
+                            else { targetX = p.baseX - (dir * 5) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
                         } else {
                             // 수비하는 팀 (상대 골킥 압박): 라인을 적당히 위로 올림
                             if (p.role === 'FW') { targetX = p.baseX + (dir * 25) + organicX; targetY = p.baseY; }
@@ -1522,21 +1522,25 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let nextVy = centerDriveVy * 0.8; 
 
                         if (isWingerDrive) {
-                            nextVx = dir * (pSpd / 100) * 1.02; 
-                            
-                            // 🎯 컷인사이드(안쪽 꺾기) 시작 위치를 파이널 서드 초입이 아닌 '페널티 박스 앞(80m 지점)'으로 확 늦춤
+                            // 🎯 박스 근처(파이널 서드)인지 판별
                             let isNearBox = (p.team === leftTeam && p.x > 80) || (p.team === rightTeam && p.x < 20);
                             
                             if (isNearBox) {
-                                // 페널티 박스 앞까지 깊숙하게 전진한 후에야 대각선(1.05)으로 파고들기 시작!
-                                nextVy = (p.y < 50) ? 1.05 : -1.05; 
+                                // 1️⃣ 파이널 서드 진입: 발에 붙이는 드리블 (단, 기존보다 훨씬 빠르고 날카로운 컷인)
+                                nextVx = dir * (pSpd / 100) * 1.8; // 전진 속도 대폭 상향 (기존 1.02 -> 1.8)
+                                nextVy = (p.y < 50) ? 1.4 : -1.4;  // 안쪽으로 꺾어 들어가는 대각선 속도도 상향
                                 state.eventText = "⚡ 박스 진입 컷인!";
+                                p.cooldown = 1; // 발 밑에 두고 촘촘하게 컨트롤하여 수비를 벗겨냄
                             } else {
-                                // 하프라인을 넘었어도 얕은 위치면 꺾지 않고 터치라인을 따라 일직선으로 치고 달림
+                                // 2️⃣ 측면 빈 공간: 길게 쳐놓고 달리는 '폭풍 치달 (Kick & Run)'
+                                nextVx = dir * (pSpd / 100) * 3.8; // 공을 앞쪽으로 멀리 뻥 차놓음 (기존 1.02 -> 3.8)
                                 nextVy = 0; 
-                                state.eventText = "⚡ 터치라인 치달!";
+                                state.eventText = "💨 터치라인 치달!";
+                                
+                                // ★ 핵심: 2틱(0.2초) 동안 쿨타임을 걸어 다시 터치하지 못하게 강제함
+                                // 공이 혼자 굴러가는 동안 선수는 오프더볼 스프린트 속도로 공을 향해 미친 듯이 전력질주하게 됨!
+                                p.cooldown = 2; 
                             }
-                            p.cooldown = 1; 
                         }
                         // ★ 역습 및 단독 돌파 전용 움직임 (빈 공간으로 쇄도)
                         else if (isCounterDrive && !imminentThreat) {
