@@ -1814,6 +1814,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 state.eventText = hasCloseEnemy ? "볼 키핑" : "측면 돌파";
                                 p.cooldown = 0; // 쿨타임 0으로 턴오버 차단
                             }
+                        }
                         // ★ 역습 및 단독 돌파 전용 움직임 (빈 공간으로 쇄도)
                         else if (isCounterDrive && !imminentThreat) {
                             nextVx = dir * (pSpd / 100) * 1.6; // 중앙을 가르는 폭발적인 직진 속도
