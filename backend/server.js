@@ -338,11 +338,11 @@ io.on('connection', (socket) => {
 
     socket.on('togglePause', (roomCode) => {
         const room = rooms[roomCode];
-        // 방이 존재하고, 매치가 진행 중이며, 테스트 모드(000 혹은 111)일 때만 작동하도록 락(Lock)을 겁니다.
         if (room && room.matchState && (room.isTestMode || room.isDraftTestMode)) {
-            // 현재 일시정지 상태를 반대로 뒤집습니다. (true <-> false)
+            // ★ 방어막: 골 세리머니(세팅 대기) 중일 때는 일시정지/재개 조작 자체를 무시함!
+            if (room.matchState.phase === 'goal') return; 
+
             room.matchState.isPaused = !room.matchState.isPaused;
-            // 변경된 상태를 클라이언트로 보내 UI(버튼)를 업데이트합니다.
             io.to(roomCode).emit('pauseToggled', room.matchState.isPaused);
         }
     });
@@ -748,29 +748,28 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     else if (state.phase === 'goal_kick') {
                         if (p.team === state.possessionTeam) {
                             // 공격하는 팀 (골킥 받는 팀): 공을 받기 위해 키퍼 앞쪽으로 적당히 내려옴
-                            if (p.role === 'FW') { targetX = p.baseX - (dir * 10) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 10) + organicX; targetY = p.baseY; }
-                            else { targetX = p.baseX - (dir * 10) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
+                            if (p.role === 'FW') { targetX = p.baseX - (dir * 3) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 3) + organicX; targetY = p.baseY; }
+                            else { targetX = p.baseX - (dir * 2) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
                         } else {
                             // 수비하는 팀 (상대 골킥 압박): 라인을 적당히 위로 올림
-                            if (p.role === 'FW') { targetX = p.baseX + (dir * 10) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 5) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'DF') { targetX = p.baseX + (dir * 5) + organicX; targetY = p.baseY; }
+                            if (p.role === 'FW') { targetX = p.baseX + (dir * 25) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 20) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'DF') { targetX = p.baseX + (dir * 20) + organicX; targetY = p.baseY; }
                         }
                     }
                     else if (state.phase === 'gk_hold') {
-                        let pinchedY = 50 + (p.baseY - 50) * 0.4 + organicY;
+                        // 🎯 현재 Y축(p.y)을 최대한 유지하며 부드럽게 이동
+                        let naturalY = p.y + (p.baseY - p.y) * 0.1 + organicY;
                         
                         if (p.team === state.possessionTeam) {
-                            // 캐칭한 팀 (역습 전개 준비): 라인을 올림
-                            if (p.role === 'FW') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; } 
-                            else if (p.role === 'MF') { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; } 
-                            else { targetX = p.baseX - (dir * 5) + organicX; targetY = pinchedY; } 
+                            // 🏃‍♂️ 캐칭한 팀 (역습 전개 준비): 원래 포메이션보다 앞쪽(+dir 방향)으로 치고 나감
+                            targetX = p.baseX + (dir * 10) + organicX; 
+                            targetY = naturalY;
                         } else {
-                            // 🎯 수비하는 팀 (빠르게 복귀): 오프셋을 대폭 줄여서 자기 골대에 처박히는 버그 완벽 차단!
-                            if (p.role === 'FW') { targetX = p.baseX + (dir * 10) + organicX; targetY = pinchedY; }
-                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 5) + organicX; targetY = pinchedY; }
-                            else if (p.role === 'DF') { targetX = p.baseX + (dir * 5) + organicX; targetY = pinchedY; }
+                            // 🛡️ 슛을 뺏긴 팀 (백코트): 자기 진영(-dir 방향)으로 부지런히 후퇴
+                            targetX = p.baseX - (dir * 10) + organicX; 
+                            targetY = naturalY;
                         }
                     }
                     else if (state.phase === 'throw_in') {
@@ -1122,7 +1121,11 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     moveSpeed *= 1.8; // 🎯 일반 침투 및 압박 스프린트 속도도 상향
                 }
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
-                if (state.phase !== 'play') moveSpeed *= 5.0;
+                if (state.phase !== 'play' && state.phase !== 'gk_hold') {
+                    moveSpeed *= 5.0;
+                } else if (state.phase === 'gk_hold') {
+                    moveSpeed *= 1.3; // 공수 교환 템포에 맞춰서 선수들이 살짝만 빠르게(1.3배속) 조깅하며 이동함
+                }
                 // 골키퍼 반응속도
                 // 대포알 슛을 따라가게 하려면 이 수치를 4.0, 5.0 등으로 확 올려주세요.
                 if (p.role === 'GK' && p.isDiving) moveSpeed *= 3.2; // 다이빙 시 폭발적인 속도로 몸을 날림
@@ -1392,9 +1395,18 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             }
 
                             score -= (dist * (pPas > 85 ? 0.3 : 1.0)); 
-                            score += (minEnemyDistToM * 5); 
+                            // 🎯 [핵심] 빈 공간(안전한 동료)을 찾는 AI 지능 상향!
+                            // 공격 진영(inAttackingHalf)이나 파이널 서드에서는 수비수와 거리가 먼(minEnemyDistToM) 동료에게 주는 점수 가중치를 2배 이상 높임.
+                            if (inAttackingHalf) {
+                                score += (minEnemyDistToM * 12); 
+                            } else {
+                                score += (minEnemyDistToM * 7); 
+                            }
+                            
                             if (state.lastPasserId === m.id) score -= 2000; 
-                            score += (Math.random() * (pPas * 0.8));
+                            
+                            // 🎯 주사위 억까 방지: 패스 스탯이 높을수록 랜덤 변수를 줄여서 일관되게 가장 좋은 옵션을 선택하도록 안정성 강화
+                            score += (Math.random() * (100 - pPas) * 0.4);
 
                             if (score > 0) passOptions.push({ mate: m, score: score, dist: dist, isThrough: isThrough, isCutback: isCutback, isCross: isCross });
                         }
@@ -1453,26 +1465,32 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     if (isHeavilyPressed && !wantsToHold && !isInShootingRange) passThreshold = 10;
 
                     if (bestOption && bestOption.score > passThreshold) {
-                        // ... (패스 실행 코드는 그대로 둡니다) ...
-                        let errorMargin = Math.max(0.05, (100 - pPas) * 0.025); 
+                        // 1️⃣ 좌표 오차(삑사리) 대폭 감소: 패스 스탯에 따른 오차율을 절반 이하로 줄임
+                        let errorMargin = Math.max(0.02, (100 - pPas) * 0.012); 
                         let targetX = bestOption.mate.x + (Math.random() - 0.5) * errorMargin; 
                         let targetY = bestOption.mate.y + (Math.random() - 0.5) * errorMargin;
                         
                         let isBackpass = (p.team === leftTeam) ? (targetX < p.x) : (targetX > p.x);
-
+                        
                         if (isBackpass) {
                             targetX = bestOption.mate.x; targetY = bestOption.mate.y; 
                             bestOption.isThrough = false; bestOption.isCross = false;
                         } else if (bestOption.isThrough || bestOption.isCross) { 
-                            let leadDist = (bestOption.mate.stats && bestOption.mate.stats.spd > 85) ? 9.0 : 6.0;
+                            // 2️⃣ 스루패스 거리 조절: 앞으로 너무 길게 찔러서 키퍼에게 헌납하거나 아웃되는 현상 방지 (리드 거리 축소)
+                            let leadDist = (bestOption.mate.stats && bestOption.mate.stats.spd > 85) ? 6.5 : 4.0;
+                            
+                            // 파이널 서드에서는 공간이 좁으므로 수비에게 안 잘리게 발밑에 더 가깝게 줌
+                            if (inFinalThird) leadDist *= 0.6; 
+                            
                             targetX += dir * leadDist; 
                         }
-
+                        
                         io.to(roomCode).emit('playSound', 'kick');
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
-                        // 🎯 패스 속도 하향: 나누는 값(Divider)을 키워 속도를 줄이고, 최대 파워(5.5 -> 4.0)도 낮춤
-                        let powerDivider = (bestOption.isThrough || bestOption.isCross) ? 6.5 : 5.5;
-                        let power = Math.max(2.0, Math.min(d / powerDivider, 4.0));
+                        
+                        // 3️⃣ 패스 속도(파워) 상향: 공이 느려서 굴러가다 끊기는 현상(인터셉트) 방지 (Divider 감소, 최대 파워 5.5로 상향)
+                        let powerDivider = (bestOption.isThrough || bestOption.isCross) ? 5.0 : 4.0;
+                        let power = Math.max(2.5, Math.min(d / powerDivider, 5.5));
 
                         state.ball.vx = ((targetX - p.x) / d) * power; state.ball.vy = ((targetY - p.y) / d) * power; 
                         
@@ -1590,6 +1608,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 function handleGoal(room, scoringTeam) {
     let state = room.matchState;
     state.isPaused = true;
+    state.phase = 'goal'; // ★ 핵심 방어선: 골 세리머니 중임을 명시해서 중복 골 판정을 차단!
     state.ball.vx = 0; state.ball.vy = 0;
     state.score[`team${scoringTeam}`]++;
 
