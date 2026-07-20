@@ -48,7 +48,7 @@ function getRole(posId) {
 }
 
 function resetPositions(state, kickoffTeam) {
-    state.ball = { x: 50, y: 50, vx: 0, vy: 0, airTicks: 0, shotTicks: 0 };
+    state.ball = { x: 50, y: 50, vx: 0, vy: 0, airTicks: 0, shotTicks: 0, curvePower: 0 };
     state.phase = 'play';
     state.isPaused = false;
     state.setPieceTimer = 0; // ★ 하프타임 킥오프 먹통 해결의 핵심 키!
@@ -552,6 +552,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 state.setPieceTimer--;
                 if (state.setPieceTimer <= 0) {
                     io.to(roomCode).emit('playSound', 'kick');
+                    state.ball.curvePower = 0; // 🎯 세트피스 발동 시 기존 커브 초기화
                     
                     if (state.phase === 'gk_hold' && state.gkHolder) {
                         let p = state.gkHolder;
@@ -665,6 +666,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
             // --- 2. 물리 연산 ---
             if (state.phase === 'play') {
+                // 🌀 감아차기(커브) 물리 효과 적용
+                if (state.ball.curvePower && state.ball.curvePower !== 0) {
+                    state.ball.vy += state.ball.curvePower; // Y축 방향으로 지속적인 휨 발생
+                    state.ball.curvePower *= 0.85; // 커브 힘이 점차 감소하며 자연스러운 포물선 형성
+                    if (Math.abs(state.ball.curvePower) < 0.05) state.ball.curvePower = 0;
+                }
+
                 state.ball.x += state.ball.vx; state.ball.y += state.ball.vy;
                 state.ball.vx *= 0.90; state.ball.vy *= 0.90; 
                 if (state.ball.airTicks && state.ball.airTicks > 0) state.ball.airTicks--;
@@ -1204,6 +1212,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if (!isBallInAir && distToBallAct < touchRadius && p.cooldown <= 0 && state.phase === 'play') {
                     state.lastTouchTeam = p.team;
                     state.lastTouchPlayerName = p.name; 
+                    state.ball.curvePower = 0; // 🎯 선수가 공을 터치하는 순간 궤적 초기화 (드리블 휨 방지)
                     
                     // 🎯 각 팀별 마지막 터치 선수를 독립적으로 기록 (자책골 방어용)
                     if (p.team === 1) state.lastTeam1Touch = p.name;
@@ -1328,17 +1337,43 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     
                     if (canShoot && Math.random() < shootProb) {
                         io.to(roomCode).emit('playSound', 'kick');
-                        let power = distToGoal < 15 ? 6.0 : 8 + ((pSht - 70) * 0.25);
-                        let cornerTarget = (Math.random() > 0.5) ? 1 : -1; 
-                        let offsetSpread = 11 - (pSht > 85 ? (Math.random() * 2) : (Math.random() * 6));
-                        let aimY = 50 + (cornerTarget * offsetSpread);
-                        let dx = targetGoalX - p.x, dy = aimY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1; 
-                        state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
-                        state.ball.shotTicks = distToGoal < 15 ? 8 : 15;
-                        
-                        // 🚨 치명적 버그 수정: 슛을 차놓고 리턴(종료)하지 않아서 바로 드리블 속도로 덮어씌워지던 문제 해결
+                        // 🎯 윙어/공격수의 감아차기(Finesse Shot) 각도 및 조건 계산
+                        // 페널티 박스 좌우 측면 모서리(Y축 10~35 차이)에서, 거리 14~26m 사이일 때 발동
+                        let isFinesseAngle = Math.abs(p.y - 50) > 10 && Math.abs(p.y - 50) < 35 && distToGoal > 14 && distToGoal < 26;
+                        let useFinesse = isFinesseAngle && Math.random() < (pSht > 80 ? 0.6 : 0.3); // 슈팅 스탯 기반 확률
+                        let dx, dy, d, power;
+                        if (useFinesse) {
+                            // 🌀 ZD 감아차기 궤적 계산
+                            power = 7.5 + ((pSht - 70) * 0.15); // 파워보단 정교한 궤적에 집중
+                            // 1. 타겟: 골대 바깥쪽 허공을 겨냥 (먼 포스트보다 16만큼 더 바깥쪽)
+                            let aimWideY = p.y < 50 ? 50 + 16 : 50 - 16; 
+                            dx = targetGoalX - p.x; 
+                            dy = aimWideY - p.y; 
+                            d = Math.sqrt(dx*dx + dy*dy) || 1; 
+                            
+                            state.ball.vx = (dx / d) * power; 
+                            state.ball.vy = (dy / d) * power;
+                            
+                            // 2. 커브: 허공을 향해 출발한 공을 골대 안쪽(50)으로 급격히 휘게 만듦
+                            // 위(왼쪽)에서 찼으면 아래쪽(+Y)으로 쏘고 다시 위쪽(-Y)으로 휨
+                            // 아래(오른쪽)에서 찼으면 위쪽(-Y)으로 쏘고 다시 아래쪽(+Y)으로 휨
+                            state.ball.curvePower = p.y < 50 ? -1.4 : 1.4;
+                            state.ball.shotTicks = 16; // 궤적이 그려질 충분한 체공 시간
+                            state.eventText = "✨ 환상적인 감아차기!";
+                        }
+                        else {
+                            // 💥 일반 파워 슈팅
+                            state.ball.curvePower = 0; 
+                            power = distToGoal < 15 ? 6.0 : 8 + ((pSht - 70) * 0.25);
+                            let cornerTarget = (Math.random() > 0.5) ? 1 : -1; 
+                            let offsetSpread = 11 - (pSht > 85 ? (Math.random() * 2) : (Math.random() * 6));
+                            let aimY = 50 + (cornerTarget * offsetSpread);
+                            dx = targetGoalX - p.x; dy = aimY - p.y; d = Math.sqrt(dx*dx + dy*dy) || 1; 
+                            state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
+                            state.ball.shotTicks = distToGoal < 15 ? 8 : 15;
+                            state.eventText = "⚽ 강력한 슈팅!";
+                        }
                         p.cooldown = 15;
-                        state.eventText = "⚽ 강력한 슈팅!";
                         return; 
                     }
 
