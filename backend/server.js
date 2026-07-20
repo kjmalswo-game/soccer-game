@@ -503,6 +503,19 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
             if (state.isPaused) return; 
             state.ticks++;
 
+            let gameSecs = (state.ticks / 10) * (db.settings.gameMinutesPerHalf * 60 / db.settings.halfDurationRealSeconds);
+            if (state.half === 2) gameSecs += db.settings.gameMinutesPerHalf * 60;
+            let currentMinute = Math.floor(gameSecs / 60);
+            
+            let desperateTeam = 0; // 0이면 발동 안 함
+            // 후반 65분 이후이고, 점수가 지고 있을 때만 해당 팀을 닥공 모드로 전환!
+            if (currentMinute >= 65) {
+                if (state.score.team1 < state.score.team2) desperateTeam = 1;
+                else if (state.score.team2 < state.score.team1) desperateTeam = 2;
+            }
+    
+            let leftTeam = state.half === 1 ? 1 : 2;
+
             // ★ 후반전 진영 교체 대응 기준 변수 (가장 중요)
             let leftTeam = state.half === 1 ? 1 : 2;
             let rightTeam = state.half === 1 ? 2 : 1;
@@ -922,11 +935,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         }
                     }
                     else if (attTeam === p.team) {
-                        // ★ 공격 시에도 낙하 예상 지점(refBallX)을 기준으로 삼아 롱킥 시 미리 전진하게 만듦
                         let refBallX = state.ball.airTicks > 0 ? state.ball.x + (state.ball.vx * state.ball.airTicks) : state.ball.x;
                         let isChasingBall = (state.passTargetId === p.id) || (!state.passTargetId && rank === 0 && distToBall < 15) || (isLooseBall && rank === 0);
                         
+                        // 🚨 닥공 모드 판별
+                        let isDesperateMode = (p.team === desperateTeam); 
+                        
                         if (isChasingBall) {
+                            // ... (기존 isChasingBall 및 ballCarrier 로직은 그대로 유지)
                             targetX = state.ball.x + (state.ball.vx*2); 
                             targetY = state.ball.y + (state.ball.vy*2); 
                             isPressing = true; 
@@ -939,16 +955,23 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let inFinalThird = (p.team === leftTeam && refBallX > 65) || (p.team === rightTeam && refBallX < 35);
                             let inAttackingHalf = (p.team === leftTeam && refBallX > 50) || (p.team === rightTeam && refBallX < 50);
                             let offsideLine = (p.team === leftTeam) ? defLineRight : defLineLeft;
-
+                    
                             if (p.posId === 'CB') {
                                 let maxPushX = (p.team === leftTeam) ? (inAttackingHalf ? 55 : 46) : (inAttackingHalf ? 45 : 54); 
+                                // 🚨 지고 있으면 센터백이 하프라인을 넘어서까지 전진 (라인 확 올림)
+                                if (isDesperateMode) maxPushX = (p.team === leftTeam) ? 68 : 32; 
+                                
                                 let cbTargetX = (p.team === leftTeam) ? Math.min(maxPushX, refBallX - 20) : Math.max(maxPushX, refBallX + 20);
                                 targetX = p.baseX + (dir * Math.max(0, (p.team === leftTeam ? cbTargetX - p.baseX : p.baseX - cbTargetX)));
                                 targetY = 50 + (p.baseY - 50) * 1.2 + organicY;
                             }
                             else if (p.posId === 'LB' || p.posId === 'RB') {
-                                if (inAttackingHalf) {
+                                // 🚨 지고 있으면 공이 우리 진영에 있어도 무지성 풀백 오버래핑 시작!
+                                if (inAttackingHalf || isDesperateMode) {
                                     let overlapDepth = (p.stats && p.stats.spd > 85) ? 22 : 12;
+                                    // 🚨 풀백을 윙어급으로 깊게 침투시킴 (공격 숫자 추가)
+                                    if (isDesperateMode) overlapDepth += 15; 
+                                    
                                     targetX = refBallX + (dir * overlapDepth); 
                                     let goalLine = (p.team === leftTeam) ? 95 : 5;
                                     if (dir === 1 && targetX > goalLine) targetX = goalLine;
@@ -964,49 +987,18 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             else if (p.role === 'MF') {
                                 let isDM = p.posId.includes('DM');
                                 let isWing = p.posId.includes('LM') || p.posId.includes('RM') || p.posId.includes('LW') || p.posId.includes('RW');
-
-                                // 🏃 공이 하프라인을 넘기 전이라도, 어느 정도 전진하면 바로 침투 시작!
+                    
                                 let earlyRunZone = (p.team === leftTeam && refBallX > 35) || (p.team === rightTeam && refBallX < 65);
-
+                                // 🚨 지고 있으면 위치 불문 미드필더 전원 박스 침투 모드!
+                                if (isDesperateMode) earlyRunZone = true; 
+                    
                                 if (isDM) {
                                     let dmAdvance = (p.team === leftTeam) ? refBallX - 12 : refBallX + 12;
+                                    // 🚨 수비형 미드필더(DM)도 공격수처럼 박스 앞까지 밀고 올라옴
+                                    if (isDesperateMode) dmAdvance = (p.team === leftTeam) ? refBallX - 3 : refBallX + 3; 
+                                    
                                     targetX = inAttackingHalf ? refBallX - (dir * 12) : p.baseX + (dir * Math.max(0, (p.team === leftTeam ? dmAdvance - p.baseX : p.baseX - dmAdvance) * 0.8));
                                     targetY = p.baseY + organicY;
-                                } else {
-                                    // 🏃 윙어는 earlyRunZone이 켜지면 무조건 공간으로 스프린트!
-                                    if (earlyRunZone && isWing) {
-                                        targetX = targetGoalX - (dir * 8);
-                                        let stayWideY = 50 + (p.baseY - 50) * 0.85; 
-                                        targetY = stayWideY + organicY;
-                                        p.isMakingRun = true;
-                                    } else if (inAttackingHalf && !isWing) {
-                                        targetX = targetGoalX - (dir * 15);
-                                        targetY = p.baseY + (Math.random() - 0.5) * 15; 
-                                        p.isMakingRun = true;
-                                    } else {
-                                        let spaceX = refBallX + (dir * 10); 
-                                        let spaceY = p.baseY + (state.ball.y - p.baseY) * 0.35;
-                                        let bestY = spaceY;
-                                        let maxFoundSpace = -Infinity;
-                                        
-                                        [-15, 0, 15].forEach(offset => {
-                                            let testY = spaceY + offset;
-                                            if (testY < 5 || testY > 95) return;
-                                            let localMin = Infinity;
-                                            state.players.forEach(e => {
-                                                if (e.team !== p.team && e.role !== 'GK') {
-                                                    let dist = getDistance(spaceX, testY, e.x, e.y);
-                                                    if (dist < localMin) localMin = dist;
-                                                }
-                                            });
-                                            if (localMin > maxFoundSpace) {
-                                                maxFoundSpace = localMin;
-                                                bestY = testY;
-                                            }
-                                        });
-                                        targetX = spaceX + organicX;
-                                        targetY = bestY + organicY;
-                                    }
                                 }
                             }
                             else if (p.role === 'FW') {
@@ -1325,12 +1317,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (laneBlocked) score -= 3000; 
 
                             // 전진 패스와 백패스(후진) 철저히 분리
-                            if (forwardDist > -2) {
-                                // 전진 패스는 가산점 팍팍
-                                if (isCounterAttack) score += (forwardDist * 15.0); 
-                                else if (inAttackingHalf) score += (forwardDist * (pPas > 85 ? 10.0 : 7.0)); 
-                                else score += (forwardDist * (pPas > 85 ? 6.5 : 5.0)); 
+                            let isDesperateMode = (p.team === desperateTeam);
 
+                            if (forwardDist > -2) {
+                                // 🚨 닥공 시 전진 패스 점수 2.5배 뻥튀기 (위험해도 무조건 앞으로 찌름)
+                                let fwdBonus = isDesperateMode ? 2.5 : 1.0; 
+                            
+                                if (isCounterAttack) score += (forwardDist * 15.0 * fwdBonus); 
+                                else if (inAttackingHalf) score += (forwardDist * (pPas > 85 ? 10.0 : 7.0) * fwdBonus); 
+                                else score += (forwardDist * (pPas > 85 ? 6.5 : 5.0) * fwdBonus); 
+                            
                                 let isWinger = p.y < 20 || p.y > 80;
                                 let isReceiverCentral = m.y > 30 && m.y < 70;
                                 // 🎯 박스 안쪽인지, 하프스페이스(측면과 중앙 사이의 틈)인지 세밀하게 판별
@@ -1382,16 +1378,16 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 let isDeep = (p.team === leftTeam && p.x > 85) || (p.team === rightTeam && p.x < 15);
                                 let isReceiverInBox = (p.team === leftTeam && m.x > 75 && m.x < p.x) || (p.team === rightTeam && m.x < 25 && m.x > p.x);
                                 let isReceiverCentral = m.y > 30 && m.y < 70;
-
+                            
                                 if (isDeep && isReceiverInBox && isReceiverCentral) {
                                     score += 6000; 
                                     isCutback = true;
                                 } else if (inAttackingHalf) {
                                     let backpassScore = -5000; 
                                     
-                                    // 🎯 역습 찬스이거나 앞이 뻥 뚫렸을 때는 템포를 죽이는 백패스 절대 금지! (돌파 유도)
-                                    if (isCounterAttack || isIsolatedFront) {
-                                        backpassScore = -99999;
+                                    // 🚨 역습 찬스이거나 '닥공 모드'일 때는 컷백이 아닌 이상 백패스 절대 금지!
+                                    if (isCounterAttack || isIsolatedFront || (isDesperateMode && !isCutback)) {
+                                        backpassScore = -99999; // 공 뺏길 바엔 차라리 돌파하다 뺏겨라 마인드
                                     }
                                     else if (isHeavilyPressed && minEnemyDistToM > 8 && !laneBlocked) {
                                         backpassScore = 80; 
