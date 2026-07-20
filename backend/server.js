@@ -164,11 +164,27 @@ io.on('connection', (socket) => {
         if(!room || !room.players[socket.id]) return; 
         room.players[socket.id].formation = formationId; 
         room.players[socket.id].ready = true;
+        
+        // 🚨 [버그 수정] 테스트 모드(000, 111)일 경우, 유저가 레디하면 AI도 무조건 강제 레디 처리!
+        // (대기방에서 먹통이 되거나 무한 대기하는 현상 원천 차단)
+        if (room.isTestMode || room.isDraftTestMode) {
+            if (room.players['dummy_ai']) {
+                room.players['dummy_ai'].ready = true;
+                // 혹시 포메이션이 꼬였을 경우를 대비한 자동 할당
+                if (!room.players['dummy_ai'].formation) {
+                    const formationKeys = Object.keys(db.formations);
+                    room.players['dummy_ai'].formation = formationKeys[Math.floor(Math.random() * formationKeys.length)];
+                }
+            }
+        }
+
         const playersArr = Object.values(room.players);
         
         if (playersArr.every(p => p.ready) && playersArr.length === 2) {
             if (room.isTestMode) {
                 playersArr.forEach(pData => {
+                    // 뽑았던 선수가 중복되거나 꼬이지 않게 팀을 초기화하고 다시 10명을 채움
+                    pData.team = [];
                     for (let i = 0; i < 10; i++) {
                         if (room.availablePlayers.length === 0) break;
                         let idx = Math.floor(Math.random() * room.availablePlayers.length);
