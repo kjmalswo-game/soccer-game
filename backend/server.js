@@ -920,10 +920,17 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         let refBallX = state.ball.airTicks > 0 ? state.ball.x + (state.ball.vx * state.ball.airTicks) : state.ball.x;
                         let shiftY = (state.ball.y - 50) * 0.4; 
                         
+                        // 🚨 [추가] 내 팀에 풀백(LB, RB)이 하나도 없으면 백3 포메이션으로 간주!
+                        let isBack3 = !state.players.some(m => m.team === p.team && (m.posId === 'LB' || m.posId === 'RB'));
+                        
                         let pinchFactor = 1.0;
                         if (p.posId === 'CB') pinchFactor = 0.2; // 센터백 중앙 밀집
                         else if (p.role === 'DF') pinchFactor = 0.6; // 풀백 중앙 좁힘
-                        else if (p.role === 'MF') pinchFactor = 0.75; 
+                        else if (p.role === 'MF') {
+                            pinchFactor = 0.75;
+                            // 🚨 백3의 양쪽 윙백(LM, RM)은 수비 시 측면을 확실히 덮기 위해 넓게(0.9) 벌림
+                            if (isBack3 && (p.posId === 'LM' || p.posId === 'RM')) pinchFactor = 0.9;
+                        }
 
                         let blockY = 50 + (p.baseY - 50) * pinchFactor + shiftY + organicY;
                         
@@ -933,13 +940,30 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         }
 
                         let blockX = p.baseX + organicX;
-                        if (p.role === 'FW') blockX = refBallX - (dir * 8);
-                        else if (p.role === 'MF') blockX = Math.max(25, Math.min(75, refBallX - (dir * 18)));
-                        else if (p.role === 'DF') blockX = Math.max(10, Math.min(90, refBallX - (dir * 28)));
+                        
+                        if (p.role === 'FW') {
+                            blockX = refBallX - (dir * 8);
+                        } 
+                        else if (p.role === 'MF') {
+                            let mfDepth = 18; // 기본 미드필더 수비 깊이
+                            
+                            if (isBack3) {
+                                // 🚨 [추가] 백3 포메이션일 경우, 측면과 중앙의 수비 가담 대폭 상향!
+                                if (p.posId === 'LM' || p.posId === 'RM') {
+                                    mfDepth = 27; // 풀백(28) 위치까지 깊숙하게 내려가서 5백 형성
+                                } else if (p.posId.includes('DM')) {
+                                    mfDepth = 25; // 센터백 바로 앞을 쓸어담도록 투볼란치 라인 형성
+                                }
+                            }
+                            
+                            // 미드필더가 더 깊이 수비 가담할 수 있도록 Math.max 하한선을 25에서 15로 낮춤
+                            blockX = Math.max(15, Math.min(85, refBallX - (dir * mfDepth)));
+                        } 
+                        else if (p.role === 'DF') {
+                            blockX = Math.max(10, Math.min(90, refBallX - (dir * 28)));
+                        }
 
                         let isOpponentWinger = ballCarrier && (ballCarrier.y < 25 || ballCarrier.y > 75);
-                        let pressDist0 = isOpponentWinger ? 35 : 18; // 윙어 상대로는 즉각적으로 압박 범위를 2배로 넓힘!
-                        let pressDist1 = isOpponentWinger ? 20 : 12; // 협력 수비 범위 상향
 
                         if (isLooseBall && rank === 0) {
                             targetX = pTargetX + (p.id % 3 - 1) * 0.5; 
