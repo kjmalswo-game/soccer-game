@@ -1407,25 +1407,34 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 // 🎯 박스 안쪽인지, 하프스페이스(측면과 중앙 사이의 틈)인지 세밀하게 판별
                                 let isReceiverInBox = (p.team === leftTeam && m.x > 84 && m.y > 20 && m.y < 80) || (p.team === rightTeam && m.x < 16 && m.y > 20 && m.y < 80);
                                 let isHalfSpace = (m.y >= 20 && m.y <= 35) || (m.y >= 65 && m.y <= 80);
-                                
-                                // 🎯 무지성 크로스 완전 차단 및 스마트 연계 플레이 유도
+                                // 🎯 스마트 크로스 & 연계 플레이 유도
                                 if (isWinger && inFinalThird) {
                                     let isDeepZone = (p.team === leftTeam && p.x > 80) || (p.team === rightTeam && p.x < 20);
-                                    
                                     if (isDeepZone) {
                                         if (isReceiverInBox) {
-                                            // 1️⃣ 박스 안에 동료가 기다리고 있을 때만 정통 크로스!
-                                            score += 4000; 
-                                            isCross = true;
+                                            // 🚨 [진보된 필터링] 공격수 마크 상황을 체크하여 크로스의 '질(Quality)'을 평가
+                                            if (laneBlocked || enemiesNearReceiver >= 2) {
+                                                // 1️⃣ 길목이 막혔거나 타겟 주변에 수비가 2명 이상이면 공중볼을 뺏길 확률이 높으므로 절대 안 올림!
+                                                // 점수를 폭락(-5000)시켜 윙어가 직접 박스 안으로 파고드는 '컷인 드리블'을 강제함
+                                                score -= 5000; 
+                                            } else if (enemiesNearReceiver === 1) {
+                                                // 2️⃣ 1대1 경합 상황이면 크로스 가산점을 대폭 줄여서(1500), 확실한 패스나 돌파 각이 없을 때 차선책으로만 올림
+                                                score += 1500;
+                                                isCross = true;
+                                            } else {
+                                                // 3️⃣ 타겟이 완벽히 비어있는 노마크 찬스일 때만 확실하게 4000점짜리 킬러 크로스 배달!
+                                                score += 4000; 
+                                                isCross = true;
+                                            }
                                         } else if (isHalfSpace && m.isMakingRun) {
-                                            // 2️⃣ 박스가 비었으면, 하프스페이스로 침투하는 동료(미드필더 등)에게 찔러주는 컷백/스루패스
+                                            // 2️⃣ 하프스페이스로 침투하는 동료(미드필더 등)에게 찔러주는 스루패스
                                             score += 3000;
                                             isThrough = true;
                                         } else if (dist < 18 && minEnemyDistToM > 4) {
-                                            // 3️⃣ 다 안 되면 근처 미드필더/풀백과 짧게 주고받는 2대1 패스 연계 (어그로 핑퐁)
+                                            // 3️⃣ 근처 미드필더/풀백과 짧게 주고받는 2대1 패스
                                             score += 2500;
                                         } else {
-                                            // 4️⃣ 줄 곳이 마땅치 않으면 패스 점수를 폭락시켜서 '직접 드리블(돌파)' 하도록 강제함!
+                                            // 4️⃣ 줄 곳이 전혀 없으면 윙어가 직접 해결(드리블)
                                             score -= 5000; 
                                         }
                                     }
