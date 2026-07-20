@@ -561,21 +561,41 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         state.players.forEach(m => {
                             if (m.team === p.team && m.role !== 'GK') {
                                 let minEnemyDist = Infinity;
-                                state.players.forEach(e => { if (e.team !== p.team) { let d = getDistance(m.x, m.y, e.x, e.y); if(d < minEnemyDist) minEnemyDist = d; } });
-                                
+                                let enemiesNearReceiver = 0; // 🎯 동료 주변 밀집도 카운트
+                                let laneBlocked = false;     // 🎯 패스 길목에 적이 있는지 카운트
+                                state.players.forEach(e => { 
+                                    if (e.team !== p.team && e.role !== 'GK') { 
+                                        let d = getDistance(m.x, m.y, e.x, e.y); 
+                                        if (d < minEnemyDist) minEnemyDist = d; 
+                                        // 목적지 15m 반경에 적이 있으면 밀집 인원으로 카운트
+                                        if (d < 15.0) enemiesNearReceiver++; 
+                                        // 키퍼와 동료 사이의 패스 길목에 적이 겹쳐 있으면 차단
+                                        if (pDistance(e.x, e.y, p.x, p.y, m.x, m.y) < 3.0) laneBlocked = true;
+                                    } 
+                                });
+                    
                                 let forwardDist = (p.team === leftTeam) ? (m.x - p.x) : (p.x - m.x);
                                 
-                                // 🎯 키퍼가 뒤에 있는 동료에게 던져서 코너킥이나 자책골이 나오는 것을 원천 차단합니다!
-                                // 무조건 키퍼보다 앞쪽(forwardDist > 5)에 있는 동료에게만 패스하도록 락을 겁니다.
-                                if (forwardDist > 5) {
-                                    let score = minEnemyDist * 10; 
-                                    if (m.y < 20 || m.y > 80) score += 200; 
-                                    if (forwardDist > 40) score += 150;     
-                                    if (score > maxScore && minEnemyDist > 12) { maxScore = score; bestMate = m; }
+                                // 🎯 자책골 방지 (키퍼보다 앞쪽에 있는 동료) 및 길목이 열려 있을 때만 평가
+                                if (forwardDist > 5 && !laneBlocked) {
+                                    let score = minEnemyDist * 15; // 거리당 안전 점수 가중치 상향
+                                    
+                                    if (m.y < 20 || m.y > 80) score += 300; // 측면(윙어/풀백) 선호도 대폭 상향
+                                    if (forwardDist > 30) score += (forwardDist * 2); // 롱 패스 가산점
+                                    // 🚨 목적지에 적이 바글바글하면 엄청난 페널티 부여
+                                    if (enemiesNearReceiver >= 2) {
+                                        score -= 5000;
+                                    } else if (enemiesNearReceiver === 1) {
+                                        score -= 1000;
+                                    }
+                                    // 수비수와 최소 8m 이상 떨어져 있고, 점수가 가장 높은 동료 선정
+                                    if (score > maxScore && minEnemyDist > 8) { 
+                                        maxScore = score; 
+                                        bestMate = m; 
+                                    }
                                 }
                             }
                         });
-
                         if (bestMate) {
                             let d = getDistance(p.x, p.y, bestMate.x, bestMate.y) || 1;
                             let passPower = 4.5; // 🎯 골키퍼 패스 강도 하향 (기존 6.5)
