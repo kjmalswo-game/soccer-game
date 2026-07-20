@@ -1302,17 +1302,35 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let forwardDist = (p.team === leftTeam) ? (m.x - p.x) : (p.x - m.x); 
                             let laneBlocked = false;
                             let minEnemyDistToM = Infinity;
+                            let enemiesNearReceiver = 0; // 🎯 동료 주변 8m 반경 내 수비수 밀집도 카운트
                             
                             state.players.forEach(e => {
                                 if (e.team !== p.team && e.role !== 'GK') {
                                     if (pDistance(e.x, e.y, p.x, p.y, m.x, m.y) < 3.0) laneBlocked = true;
                                     let d2 = getDistance(m.x, m.y, e.x, e.y);
                                     if (d2 < minEnemyDistToM) minEnemyDistToM = d2;
+                                    if (d2 < 8.0) enemiesNearReceiver++; // 8m 반경에 있으면 밀집 인원으로 간주
                                 }
                             });
 
                             let score = 0; let isThrough = false; let isCutback = false; let isCross = false;
                             if (laneBlocked) score -= 3000; 
+
+                            // 🚨 사이드 -> 중앙 밀집 지역 억지 패스 완벽 차단 로직
+                            let isWingerPos = p.y < 22 || p.y > 78; // 패스하는 선수가 측면인지
+                            let isReceiverCentral = m.y > 30 && m.y < 70; // 받는 선수가 중앙인지
+                            let isDeepZoneForCross = (p.team === leftTeam && p.x > 80) || (p.team === rightTeam && p.x < 20);
+
+                            // 코너 플래그 근처의 크로스/컷백 상황이 아닌 일반 전개 상황일 때
+                            if (!isDeepZoneForCross) {
+                                if (isWingerPos && isReceiverCentral && enemiesNearReceiver >= 2) {
+                                    score -= 8000; // 1️⃣ 측면에서 중앙에 수비 2명 이상 있는 곳으로 패스 절대 금지
+                                } else if (enemiesNearReceiver >= 3) {
+                                    score -= 6000; // 2️⃣ 측면/중앙 불문하고 수비가 3명 이상 에워싼 곳으로는 억지 패스 포기
+                                } else if (minEnemyDistToM < 4.5 && !m.isMakingRun) {
+                                    score -= 3500; // 3️⃣ 수비가 바짝 붙어있는데 빈 공간 침투도 안 하고 서 있는 동료에게 짬처리 금지
+                                }
+                            }
 
                             // 전진 패스와 백패스(후진) 철저히 분리
                             let isDesperateMode = (p.team === desperateTeam);
@@ -1553,26 +1571,34 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             else if (isNearBox) {
                                 // 🎯 파이널 서드 돌입! (동료가 없어서 직접 요리함)
                                 let distToBaseline = (p.team === leftTeam) ? (100 - p.x) : p.x;
-                                let isDeepCorner = distToBaseline < 8; // 코너킥 라인(엔드라인) 근처인지 확인
+                                
+                                // 🚨 꺾는 지점을 8에서 15로 늘려서 여유있게 박스 안으로 진입하도록 수정
+                                let isDeepCorner = distToBaseline < 15;
                                 
                                 // 내 앞길을 가로막는 수비수가 있는지 탐지
                                 let blockerAhead = forwardEnemies.find(e => Math.abs(e.y - p.y) < 6 && getDistance(p.x, p.y, e.x, e.y) < 10);
                                 
-                                if (isDeepCorner) {
-                                    // 1️⃣ 코너킥 라인까지 깊숙하게 다다랐다면, 골대를 향해 90도(직각)로 꺾어 들어가는 무자비한 엔드라인 돌파!
-                                    nextVx = dir * (pSpd / 100) * 0.5; // 앞으로 가는 건 거의 멈추고
-                                    nextVy = (p.y < 50) ? 2.8 : -2.8;  // 골대를 향해 수직으로 급격히 파고듦!
-                                    state.eventText = "⚡ 엔드라인 직각 돌파!";
+                                if (distToBaseline < 5) {
+                                    // 🚨 [핵심 버그 수정] 라인 아웃 5m 직전! 전진을 완전히 멈추고 뒤로 살짝 접으면서 안쪽으로 꺾음
+                                    nextVx = dir * (pSpd / 100) * -0.5; // 오히려 뒤로 치면서 아웃 완벽 차단
+                                    nextVy = (p.y < 50) ? 2.5 : -2.5;
+                                    state.eventText = "⚡ 라인 붕괴 컷백 드리블!";
+                                } else if (isDeepCorner) {
+                                    // 1️⃣ 코너킥 라인 근처: 전진 속도를 확 줄이고 박스 안을 향해 90도 컷인
+                                    nextVx = dir * (pSpd / 100) * 0.2; // 앞으로 밀고 나가는 힘 최소화
+                                    nextVy = (p.y < 50) ? 2.8 : -2.8;
+                                    state.eventText = "⚡ 엔드라인 직각 파고들기!";
                                 } else if (blockerAhead) {
                                     // 2️⃣ 앞에 수비가 버티고 있다면, 박스 모서리 쪽(대각선)으로 날카롭게 컷인
-                                    nextVx = dir * (pSpd / 100) * 1.8; 
+                                    nextVx = dir * (pSpd / 100) * 1.5; 
                                     nextVy = (p.y < 50) ? 2.2 : -2.2;  
                                     state.eventText = "⚡ 중앙 대각 컷인!";
                                 } else {
-                                    // 3️⃣ 앞이 뻥 뚫려있다면, 섣불리 꺾지 않고 코너 라인까지 더 깊숙이 일자 돌파 (수비 붕괴 목적)
-                                    nextVx = dir * (pSpd / 100) * 2.8; 
-                                    nextVy = (p.y < 50) ? 0.2 : -0.2; // 터치라인 밖으로 안 나가게 미세하게 안쪽으로만 유지
-                                    state.eventText = "💨 엔드라인 깊숙이 돌파!";
+                                    // 3️⃣ 앞이 뻥 뚫려있을 때: 무지성 질주를 막기 위해 거리에 비례해 감속하며 서서히 박스를 조여감
+                                    let speedControl = Math.min(2.0, distToBaseline * 0.1); // 거리가 가까워질수록 자동으로 브레이크
+                                    nextVx = dir * (pSpd / 100) * speedControl; 
+                                    nextVy = (p.y < 50) ? 1.0 : -1.0; // 일직선이 아닌 대각선으로 서서히 박스 안쪽으로 밀고 들어감
+                                    state.eventText = "💨 박스 진입!";
                                 }
                                 p.cooldown = 1; 
                             }
