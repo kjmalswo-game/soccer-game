@@ -71,7 +71,7 @@ function resetPositions(state, kickoffTeam) {
     
     // 후반전 대응 방향 설정
     let leftTeam = state.half === 1 ? 1 : 2;
-    const striker = state.players.find(p => p.team === kickoffTeam && p.role === 'FW') || state.players.find(p => p.team === kickoffTeam);
+    const striker = state.players.find(p => p.team === kickoffTeam && p.role === 'FW') || state.players.find(p => p.team === kickoffTeam && p.role !== 'GK');
     if (striker) { 
         striker.x = kickoffTeam === leftTeam ? 47 : 53; 
         striker.y = 50; 
@@ -98,7 +98,7 @@ io.on('connection', (socket) => {
             // 🎯 settings에 halfTimeDuration: 15 추가
             settings: { timer: db.settings.draftTimers[1], skips: 0, halfTimeDuration: 15, formation: null }, 
             state: 'lobby', 
-            availablePlayers: [...db.players] 
+            availablePlayers: JSON.parse(JSON.stringify(db.players))
         };
         socket.join(roomCode); 
         socket.emit('roomCreated', roomCode, db);
@@ -119,7 +119,7 @@ io.on('connection', (socket) => {
                 // 🎯 111 모드에서는 스킵 기능도 원활히 테스트할 수 있도록 기본적으로 스킵 3회를 부여합니다!
                 settings: { timer: db.settings.draftTimers[1], skips: (roomCode === '111' ? 3 : 0), halfTimeDuration: 15, formation: null },
                 state: 'lobby',
-                availablePlayers: [...db.players],
+                availablePlayers: JSON.parse(JSON.stringify(db.players)),
                 isTestMode: roomCode === '000', // 000 모드는 드래프트 몽땅 생략 플래그
                 isDraftTestMode: roomCode === '111' // 111 모드는 혼자 드래프트 진행 플래그
             };
@@ -458,7 +458,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
     
     if (!isSecondHalf) {
         const playerIds = Object.keys(room.players);
-        const p1Data = room.players[playerIds[0]], p2Data = room.players[playerIds[1]];
+        const p1Id = playerIds.find(id => room.players[id].id === 'player1');
+        const p2Id = playerIds.find(id => room.players[id].id === 'player2');
+        const p1Data = room.players[p1Id], p2Data = room.players[p2Id];
         const p1Formation = db.formations[p1Data.formation].positions, p2Formation = db.formations[p2Data.formation].positions;
         const gkStats = { spd: 85, sht: 85, pas: 85, def: 85 };
 
@@ -1683,7 +1685,9 @@ function startHalfTime(roomCode) {
     const htDuration = room.settings.halfTimeDuration || 15;
     
     io.to(roomCode).emit('halfTimeStarted', htDuration, room.matchState.players);
-    setTimeout(() => { startMatchPhase(roomCode, true); }, htDuration * 1000);
+    setTimeout(() => { 
+        if (rooms[roomCode]) startMatchPhase(roomCode, true); 
+    }, htDuration * 1000);
 }
 
 const PORT = process.env.PORT || 3000;
