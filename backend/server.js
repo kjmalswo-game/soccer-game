@@ -513,8 +513,6 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 if (state.score.team1 < state.score.team2) desperateTeam = 1;
                 else if (state.score.team2 < state.score.team1) desperateTeam = 2;
             }
-    
-            let leftTeam = state.half === 1 ? 1 : 2;
 
             // ★ 후반전 진영 교체 대응 기준 변수 (가장 중요)
             let leftTeam = state.half === 1 ? 1 : 2;
