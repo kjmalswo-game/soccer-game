@@ -1048,36 +1048,78 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 let isWing = p.posId.includes('LM') || p.posId.includes('RM') || p.posId.includes('LW') || p.posId.includes('RW');
                     
                                 let earlyRunZone = (p.team === leftTeam && refBallX > 35) || (p.team === rightTeam && refBallX < 65);
-                                // 🚨 지고 있으면 위치 불문 미드필더 전원 박스 침투 모드!
                                 if (isDesperateMode) earlyRunZone = true; 
                     
                                 if (isDM) {
                                     let dmAdvance = (p.team === leftTeam) ? refBallX - 12 : refBallX + 12;
-                                    // 🚨 수비형 미드필더(DM)도 공격수처럼 박스 앞까지 밀고 올라옴
                                     if (isDesperateMode) dmAdvance = (p.team === leftTeam) ? refBallX - 3 : refBallX + 3; 
                                     
                                     targetX = inAttackingHalf ? refBallX - (dir * 12) : p.baseX + (dir * Math.max(0, (p.team === leftTeam ? dmAdvance - p.baseX : p.baseX - dmAdvance) * 0.8));
                                     targetY = p.baseY + organicY;
                                 }
+                                // 🚨 [버그 수정 및 기능 추가] LM, RM, AM 등 비수비형 미드필더 오프더볼 AI 복구 및 박스 침투!
+                                else {
+                                    let isWingerCrossing = ballCarrier && ballCarrier.team === p.team && (ballCarrier.y < 22 || ballCarrier.y > 78) && ((p.team === leftTeam && ballCarrier.x > 70) || (p.team === rightTeam && ballCarrier.x < 30));
+                                    
+                                    if (isWingerCrossing && !isWing) {
+                                        // 🎯 윙어가 측면을 돌파할 때, 중앙 미드필더/공미는 컷백이나 튕겨나온 공을 노리고 2선(페널티 스팟 근처) 침투
+                                        targetX = targetGoalX - (dir * 12); 
+                                        let farPostY = ballCarrier.y < 50 ? 65 : 35; 
+                                        targetY = p.id % 2 === 0 ? 50 : farPostY; // 중앙 또는 반대편으로 분산
+                                        p.isMakingRun = true;
+                                    } else if (earlyRunZone && isWing) {
+                                        targetX = targetGoalX - (dir * 8);
+                                        let stayWideY = 50 + (p.baseY - 50) * 0.85; 
+                                        targetY = stayWideY + organicY;
+                                        p.isMakingRun = true;
+                                    } else if (inAttackingHalf && !isWing) {
+                                        targetX = targetGoalX - (dir * 15);
+                                        targetY = p.baseY + (Math.random() - 0.5) * 15; 
+                                        p.isMakingRun = true;
+                                    } else {
+                                        let spaceX = refBallX + (dir * 10); 
+                                        let spaceY = p.baseY + (state.ball.y - p.baseY) * 0.35;
+                                        targetX = spaceX + organicX;
+                                        targetY = spaceY + organicY;
+                                    }
+                                }
                             }
                             else if (p.role === 'FW') {
-                                // 🏃 FW(스트라이커) 역시 earlyRunZone부터 일찍 침투 시작!
                                 let earlyRunZone = (p.team === leftTeam && refBallX > 35) || (p.team === rightTeam && refBallX < 65);
-                                if (earlyRunZone) {
+                                let isWingerCrossing = ballCarrier && ballCarrier.team === p.team && (ballCarrier.y < 22 || ballCarrier.y > 78) && ((p.team === leftTeam && ballCarrier.x > 70) || (p.team === rightTeam && ballCarrier.x < 30));
+
+                                if (isWingerCrossing) {
+                                    // 🚨 윙어가 크로스를 준비할 때, 공격수들의 다채로운 박스 침투 움직임!
+                                    let runDepth, targetRunY;
+                                    
+                                    // 선수의 ID(홀짝)나 포지션에 따라 니어 포스트와 파 포스트로 찢어져서 침투
+                                    if (p.id % 2 === 0 || p.posId === 'RS' || p.posId === 'RW') {
+                                        // 1️⃣ 니어 포스트(가까운 쪽) 잘라먹기 침투
+                                        runDepth = 6;
+                                        targetRunY = ballCarrier.y < 50 ? 40 : 60; 
+                                    } else {
+                                        // 2️⃣ 파 포스트(먼 쪽, 골키퍼 뒤)로 돌아 들어가는 롱 크로스 타겟 침투!
+                                        runDepth = 3; // 골라인에 훨씬 가깝게 깊숙이 들어감
+                                        targetRunY = ballCarrier.y < 50 ? 75 : 25; // 윙어의 반대편 사이드 끝
+                                    }
+                                    
+                                    targetX = targetGoalX - (dir * runDepth);
+                                    targetY = targetRunY;
+                                    p.isMakingRun = true;
+                                }
+                                else if (earlyRunZone) {
                                     let runDepth = (p.stats && p.stats.spd > 85) ? 2 : 5;
                                     targetX = targetGoalX - (dir * runDepth); 
                                     targetY = 50 + (p.baseY - 50) * 0.75 + (Math.random() - 0.5) * 15; 
                                     p.isMakingRun = true;
-                                    
-                                    if (dir === 1 && targetX >= offsideLine) targetX = offsideLine - 1.0;
-                                    if (dir === -1 && targetX <= offsideLine) targetX = offsideLine + 1.0;
                                 } else {
                                     targetX = offsideLine - (dir * 2.0);
                                     targetY = p.baseY + (state.ball.y - p.baseY) * 0.2 + organicY;
                                 }
                             }
                             
-                            if (p.role !== 'GK' && p.role !== 'DF' && refBallX < offsideLine) {
+                            if (p.role !== 'GK' && p.role !== 'DF' && refBallX < ((p.team === leftTeam) ? defLineRight : defLineLeft)) {
+                                let offsideLine = (p.team === leftTeam) ? defLineRight : defLineLeft;
                                 if (dir === 1 && targetX >= offsideLine) targetX = offsideLine - 1.0;
                                 if (dir === -1 && targetX <= offsideLine) targetX = offsideLine + 1.0;
                             }
@@ -1567,7 +1609,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
                             state.ball.shotTicks = distToGoal < 15 ? 8 : 15; 
                             p.cooldown = 15; // 슈팅 후 쿨다운 적용
-                            state.eventText = "⚡ 전율의 논스톱 슈팅!!!";
+                            state.eventText = "⚡ 논스톱 슈팅!";
                             return;
                         }
 
@@ -1609,27 +1651,32 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         if (isBackpass) {
                             targetX = bestOption.mate.x; targetY = bestOption.mate.y; 
                             bestOption.isThrough = false; bestOption.isCross = false;
-                        } else if (bestOption.isThrough || bestOption.isCross) { 
-                            // 2️⃣ 스루패스 거리 조절: 앞으로 너무 길게 찔러서 키퍼에게 헌납하거나 아웃되는 현상 방지 (리드 거리 축소)
+                        } else if (bestOption.isCross) { 
+                            // 🚨 [추가] 핀포인트 크로스를 넘어, 센터백과 키퍼 사이의 '침투(러닝 슛) 공간'으로 올리는 치명적인 크로스 궤적!
+                            targetX = targetGoalX - (dir * 6.0); // 골키퍼(-2)와 센터백(-10) 사이의 완벽한 틈새 공간
+                            
+                            // 크로스를 받는 선수의 동선을 예측하여 빈 공간으로 리드 패스
+                            let crossLeadY = (bestOption.mate.y - p.y) * 0.4;
+                            targetY = bestOption.mate.y + crossLeadY;
+                            
+                            // 타겟이 너무 벗어나지 않도록 페널티 박스 안쪽 폭으로 제한
+                            targetY = Math.max(22, Math.min(78, targetY));
+                        } else if (bestOption.isThrough) { 
                             let leadDist = (bestOption.mate.stats && bestOption.mate.stats.spd > 85) ? 6.5 : 4.0;
-                            
-                            // 파이널 서드에서는 공간이 좁으므로 수비에게 안 잘리게 발밑에 더 가깝게 줌
                             if (inFinalThird) leadDist *= 0.6; 
-                            
                             targetX += dir * leadDist; 
                         }
                         
                         io.to(roomCode).emit('playSound', 'kick');
                         let d = getDistance(p.x, p.y, targetX, targetY) || 1; 
                         
-                        // 3️⃣ 패스 속도(파워) 상향: 공이 느려서 굴러가다 끊기는 현상(인터셉트) 방지 (Divider 감소, 최대 파워 5.5로 상향)
                         let powerDivider = (bestOption.isThrough || bestOption.isCross) ? 5.0 : 4.0;
                         let power = Math.max(2.5, Math.min(d / powerDivider, 5.5));
 
                         state.ball.vx = ((targetX - p.x) / d) * power; state.ball.vy = ((targetY - p.y) / d) * power; 
                         
                         if (bestOption.isCutback) {
-                            state.eventText = "🎯 결정적 컷백!";
+                            state.eventText = "🎯 컷백!";
                         } else if (bestOption.isCross) {
                             state.ball.airTicks = Math.floor(d / 4.0);
                             state.eventText = "🚀 크로스!";
@@ -1639,7 +1686,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             state.ball.airTicks = Math.floor(d / 5.0);
                             state.eventText = bestOption.isThrough ? "🎯 스루패스!" : "🚀 롱킥 전환!";
                         } else { 
-                            state.eventText = bestOption.isThrough ? "창의적 스루패스!" : "연계 플레이"; 
+                            state.eventText = bestOption.isThrough ? "스루패스!" : "연계 플레이"; 
                         }
                         
                         state.passTargetId = bestOption.mate.id; state.lastPasserId = p.id; p.cooldown = 8; 
@@ -1742,7 +1789,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             nextVy = dodgeDir * 2.0; 
                             // 🎯 수비를 회피할 때도 옆으로만 새지 않고 앞으로 치고 나가는 전진성 극대화
                             nextVx = dir * (pSpd / 100) * (isCounterDrive ? 1.4 : 1.1); 
-                            state.eventText = wantsToHold ? "⚡ 돌파를 위한 회피!" : "회피 기동!";
+                            state.eventText = wantsToHold ? "⚡회피!" : "회피!";
                             p.cooldown = 0;
                         } else {
                             if (inFinalThird && Math.random() < (pSpd / 100) * 0.7) {
@@ -1751,7 +1798,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 else nextVy = centerDriveVy * 1.2;
 
                                 nextVx = dir * (pSpd / 100) * 1.3; 
-                                state.eventText = "폭발적 공간 돌파!"; 
+                                state.eventText = "공간 돌파!"; 
                                 p.cooldown = 1; 
                             } else {
                                 nextVx = dir * (pSpd / 100) * 1.0; 
