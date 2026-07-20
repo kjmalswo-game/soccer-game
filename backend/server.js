@@ -304,35 +304,60 @@ io.on('connection', (socket) => {
         const room = rooms[roomCode];
         if (!room) return;
 
-        // 이미 로비로 돌아간 상태가 아닐 때만 1회 처리 (중복 방지)
-        if (room.state !== 'lobby') {
-            room.state = 'lobby';
-            room.draftCount = 0;
-            room.availablePlayers = [...db.players]; // 선수풀 100명 원상복구
-            
-            delete room.matchState;
-            delete room.currentDraft;
-            if (room.matchInterval) clearInterval(room.matchInterval);
-            if (room.draftTimeout) clearTimeout(room.draftTimeout);
+        // 🚨 조건문(if) 삭제: 버튼을 누르면 상태 무관하게 무조건 로비로 강제 귀환 처리 (버그 원천 차단)
+        room.state = 'lobby';
+        room.draftCount = 0;
+        // 🎯 얕은 복사 버그 방지: 무조건 깊은 복사(Deep Copy)로 100명 새롭게 충전
+        room.availablePlayers = JSON.parse(JSON.stringify(db.players)); 
 
-            // 각 플레이어의 준비 상태와 소유 팀 데이터 초기화
-            Object.keys(room.players).forEach(key => {
-                let p = room.players[key];
-                
-                if (key === 'dummy_ai') {
-                    p.ready = true; // 🤖 000, 111 모드의 AI는 늘 준비 완료 상태 유지
-                    // 다음 판을 위해 AI의 포메이션을 새롭게 랜덤 부여!
-                    const formationKeys = Object.keys(db.formations);
-                    p.formation = formationKeys[Math.floor(Math.random() * formationKeys.length)];
-                } else {
-                    p.ready = false; 
-                }
-                
-                p.team = []; // 뽑았던 선수들 몰수
-            });
+        delete room.matchState;
+        delete room.currentDraft;
+        if (room.matchInterval) clearInterval(room.matchInterval);
+        if (room.draftTimeout) clearTimeout(room.draftTimeout);
+
+        // 각 플레이어의 준비 상태와 소유 팀 데이터 초기화
+        Object.keys(room.players).forEach(key => {
+            let p = room.players[key];
             
-            // 방 안에 있는 두 명 모두에게 로비 화면으로 돌아가라고 핑 발송
-            io.to(roomCode).emit('returnedToLobby');
+            if (key === 'dummy_ai') {
+                p.ready = true; // 🤖 000, 111 모드의 AI는 늘 준비 완료 상태 유지
+                const formationKeys = Object.keys(db.formations);
+                p.formation = formationKeys[Math.floor(Math.random() * formationKeys.length)];
+            } else {
+                p.ready = false; 
+            }
+            
+            p.team = []; // 뽑았던 선수들 몰수
+        });
+        
+        io.to(roomCode).emit('returnedToLobby');
+    });
+
+    // 🎯 [새로운 기능] 대기방에서 방 나가기 로직
+    socket.on('leaveLobby', (roomCode) => {
+        const room = rooms[roomCode];
+        if (!room) return;
+
+        const isHost = room.players[socket.id] && room.players[socket.id].id === 'player1';
+
+        // 방장이거나 혼자 하는 테스트 방(000, 111)일 경우 방을 완전히 폭파
+        if (isHost || room.isTestMode || room.isDraftTestMode) {
+            socket.to(roomCode).emit('roomDestroyed', '방장이 대기방을 나갔습니다. 메인 화면으로 돌아갑니다.');
+            socket.leave(roomCode);
+            delete rooms[roomCode];
+        } else {
+            // 게스트가 나갈 경우 방장에게 알림
+            delete room.players[socket.id];
+            socket.leave(roomCode);
+            socket.to(roomCode).emit('guestLeft');
+        }
+    });
+
+    // 🎯 게스트가 나갔을 때 방장의 레디 상태를 풀어주는 헬퍼
+    socket.on('cancelReady', (roomCode) => {
+        const room = rooms[roomCode];
+        if (room && room.players[socket.id]) {
+            room.players[socket.id].ready = false;
         }
     });
 
@@ -812,42 +837,31 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                         }
                     }
                     else if (state.phase === 'throw_in') {
-                        // 🎯 스로인 상황 시 양 팀 선수들의 위치 배치 전술 (원하는 수치로 직접 커스텀 가능)
+                        // 🎯 인플레이의 연장: 포메이션(baseY)을 강제하지 않고 현재 위치에서 공 주변으로 자연스럽게 모여듦
                         let bx = state.ball.x;
                         let by = state.ball.y;
 
                         if (p.id === state.throwerId) {
                             targetX = bx;
                             targetY = by;
-                        } else if (p.team === state.possessionTeam) {
-                            // 🏃 공격팀 (스로인): 공 근처로 몰리지 않고 포메이션 Y축(baseY)을 넓게 유지
-                            if (p.role === 'FW') {
-                                targetX = bx + (dir * 15);
-                                targetY = p.baseY; // 본인 위치 유지
-                            } else if (p.role === 'MF') {
-                                targetX = bx + (dir * 5);
-                                // 공과 가장 가까운 미드필더만 살짝 다가오게 설정
-                                if (Math.abs(p.baseY - by) < 25) {
-                                    targetY = by + (p.baseY > by ? 8 : -8);
-                                } else {
-                                    targetY = p.baseY;
-                                }
-                            } else {
-                                targetX = bx - (dir * 10);
-                                targetY = p.baseY;
-                            }
                         } else {
-                            // 🛡️ 수비팀 (스로인 수비): 대형을 유지하며 지역 방어
-                            if (p.role === 'FW') {
-                                targetX = bx + (dir * 10);
-                                targetY = p.baseY;
-                            } else if (p.role === 'MF') {
-                                targetX = bx + (dir * 5);
-                                targetY = p.baseY;
+                            // 🚨 너무 한 점에 겹치지 않게, 역할에 따라 공(by) 쪽으로 끌려오는 정도(pinchFactor)를 다르게 설정
+                            let pinchFactor = (p.role === 'MF') ? 0.6 : 0.3; // 미드필더는 공을 받으러 적극적으로 다가옴
+                            let naturalY = p.y + (by - p.y) * pinchFactor + organicY;
+                            
+                            if (p.team === state.possessionTeam) {
+                                // 🏃 공격팀: 스로어 주변으로 슬금슬금 다가와서 패스 받을 준비
+                                if (p.role === 'FW') targetX = bx + (dir * 12) + organicX;
+                                else if (p.role === 'MF') targetX = bx + (dir * 5) + organicX;
+                                else targetX = bx - (dir * 8) + organicX;
                             } else {
-                                targetX = bx + (dir * 15);
-                                targetY = p.baseY;
+                                // 🛡️ 수비팀: 스로인하는 곳으로 라인을 좁혀서 압박
+                                if (p.role === 'FW') targetX = bx + (dir * 8) + organicX;
+                                else if (p.role === 'MF') targetX = bx + (dir * 3) + organicX;
+                                else targetX = bx + (dir * 12) + organicX;
                             }
+                            // 포메이션(baseY)을 무시하고 자연스러운 Y축(naturalY) 적용
+                            targetY = naturalY;
                         }
                     }
                     else if (state.phase === 'corner') {
@@ -1216,10 +1230,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     if (p.team !== attTeam && isPressing) moveSpeed *= 1.1; 
                 }
                 // ★ [핵심 1] 세트피스 타이머가 도는 동안(공격 멈춤) 지정된 포메이션 자리로 '순간이동'급으로 뛰어가게 만듦
-                if (state.phase !== 'play' && state.phase !== 'gk_hold') {
-                    moveSpeed *= 5.0;
-                } else if (state.phase === 'gk_hold') {
-                    moveSpeed *= 1.3; // 공수 교환 템포에 맞춰서 선수들이 살짝만 빠르게(1.3배속) 조깅하며 이동함
+                if (state.phase !== 'play' && state.phase !== 'gk_hold' && state.phase !== 'throw_in') {
+                    moveSpeed *= 5.0; // 골킥, 코너킥은 여전히 빠르게 전술 대형 세팅
+                } else if (state.phase === 'gk_hold' || state.phase === 'throw_in') {
+                    moveSpeed *= 1.3; // 🚨 스로인과 캐칭은 인플레이의 연장이므로 텔레포트 하지 않고 조깅함
                 }
                 // 골키퍼 반응속도
                 // 대포알 슛을 따라가게 하려면 이 수치를 4.0, 5.0 등으로 확 올려주세요.
