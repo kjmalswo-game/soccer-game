@@ -128,6 +128,12 @@
         <button id="btn-ready" onclick="readyToPlay()">준비 완료</button>
     </div>
 
+    <div style="display: flex; gap: 10px; margin-top: 20px;">
+            <button id="btn-ready" onclick="readyToPlay()">준비 완료</button>
+            <button onclick="leaveLobby()" style="background-color: #e74c3c;">방 나가기</button>
+        </div>
+    </div>
+    
     <div id="screen-draft" class="screen">
         <h2>선수 드래프트 (<span id="draft-timer" style="color:#eb3b5a; font-size: 24px;"></span>초)</h2>
         <div id="draft-popup">
@@ -681,6 +687,30 @@
         });
 
         socket.on('error', (msg) => { alert(msg); });
+
+        function leaveLobby() {
+            socket.emit('leaveLobby', myRoomCode);
+            location.reload(); // 본인은 즉시 새로고침하여 초기 화면으로 돌아감
+        }
+
+        // 🎯 방장이 나가서 방이 폭파되었을 때 게스트가 받는 이벤트
+        socket.on('roomDestroyed', (msg) => {
+            alert(msg);
+            location.reload(); // 강제로 메인 화면으로 돌려보냄
+        });
+
+        // 🎯 게스트가 나갔을 때 방장이 받는 이벤트
+        socket.on('guestLeft', () => {
+            document.getElementById('lobby-status').innerText = '상대방이 나갔습니다. 새로운 입장을 기다리는 중...';
+            
+            // 방장의 준비 상태 해제 및 버튼 원상복구
+            const btn = document.getElementById('btn-ready'); 
+            btn.innerText = "준비 완료"; 
+            btn.disabled = false; 
+            btn.style.background = '#0fb9b1';
+            
+            socket.emit('cancelReady', myRoomCode); 
+        });
     </script>
 </body>
 </html>
