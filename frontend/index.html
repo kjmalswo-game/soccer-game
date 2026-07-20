@@ -140,6 +140,7 @@
     </div>
 
     <div id="screen-match" class="screen">
+        <button id="btn-pause" onclick="togglePause()" style="display:none; position:absolute; top:20px; left:20px; background-color:#f39c12; border:2px solid white; z-index:50; font-size:18px; box-shadow:0 4px 6px rgba(0,0,0,0.5);">⏸️ 일시정지</button>
         <div style="background:#2f3640; padding:10px 40px; border-radius:10px; font-size:28px; font-weight:bold; margin-bottom:10px;">
             <span style="color:#3867d6;">TEAM 1</span> &nbsp;&nbsp;<span id="score-display">0 : 0</span>&nbsp;&nbsp; <span style="color:#eb3b5a;">TEAM 2</span>
         </div>
@@ -403,6 +404,15 @@
 
         socket.on('matchStarted', (matchState) => { 
             showScreen('screen-match'); 
+            const btnPause = document.getElementById('btn-pause');
+            if (myRoomCode.startsWith('TEST')) {
+                btnPause.style.display = 'block';
+                btnPause.innerText = '⏸️ 일시정지';
+                btnPause.style.background = '#f39c12';
+            } else {
+                btnPause.style.display = 'none';
+            }
+
             const pitch = document.getElementById('match-pitch');
             pitch.querySelectorAll('.player-node, #match-ball').forEach(el => el.remove());
 
@@ -627,6 +637,22 @@
         
             document.getElementById('final-result-text').innerHTML = endMessage;
             showScreen('screen-result'); 
+        });
+
+        function togglePause() {
+            socket.emit('togglePause', myRoomCode);
+        }
+
+        // 🎯 서버에서 일시정지/재개 상태를 보내주면 버튼 색상과 텍스트를 변경
+        socket.on('pauseToggled', (isPaused) => {
+            const btnPause = document.getElementById('btn-pause');
+            if (isPaused) {
+                btnPause.innerText = '▶️ 게임 재개';
+                btnPause.style.background = '#2ecc71'; // 초록색으로 변경
+            } else {
+                btnPause.innerText = '⏸️ 일시정지';
+                btnPause.style.background = '#f39c12'; // 다시 주황색으로
+            }
         });
 
         // 🎯 로비로 돌아가기 버튼 클릭 시 서버로 요청
