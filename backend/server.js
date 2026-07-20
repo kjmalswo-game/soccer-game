@@ -1333,13 +1333,30 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                                 let isWinger = p.y < 20 || p.y > 80;
                                 let isReceiverCentral = m.y > 30 && m.y < 70;
+                                // 🎯 박스 안쪽인지, 하프스페이스(측면과 중앙 사이의 틈)인지 세밀하게 판별
+                                let isReceiverInBox = (p.team === leftTeam && m.x > 84 && m.y > 20 && m.y < 80) || (p.team === rightTeam && m.x < 16 && m.y > 20 && m.y < 80);
+                                let isHalfSpace = (m.y >= 20 && m.y <= 35) || (m.y >= 65 && m.y <= 80);
                                 
-                                // 🎯 [수정 1] 무지성 조기 크로스 방지: 상대 페널티박스 근처 '깊은 위치'에서만 크로스를 허용
-                                if (isWinger && inFinalThird && isReceiverCentral) {
-                                    let isDeepZone = (p.team === leftTeam && p.x > 82) || (p.team === rightTeam && p.x < 18);
+                                // 🎯 무지성 크로스 완전 차단 및 스마트 연계 플레이 유도
+                                if (isWinger && inFinalThird) {
+                                    let isDeepZone = (p.team === leftTeam && p.x > 80) || (p.team === rightTeam && p.x < 20);
+                                    
                                     if (isDeepZone) {
-                                        score += 3500; // 깊은 곳에 도달했을 때만 점수를 퍼주어 크로스 유도
-                                        isCross = true;
+                                        if (isReceiverInBox) {
+                                            // 1️⃣ 박스 안에 동료가 기다리고 있을 때만 정통 크로스!
+                                            score += 4000; 
+                                            isCross = true;
+                                        } else if (isHalfSpace && m.isMakingRun) {
+                                            // 2️⃣ 박스가 비었으면, 하프스페이스로 침투하는 동료(미드필더 등)에게 찔러주는 컷백/스루패스
+                                            score += 3000;
+                                            isThrough = true;
+                                        } else if (dist < 18 && minEnemyDistToM > 4) {
+                                            // 3️⃣ 다 안 되면 근처 미드필더/풀백과 짧게 주고받는 2대1 패스 연계 (어그로 핑퐁)
+                                            score += 2500;
+                                        } else {
+                                            // 4️⃣ 줄 곳이 마땅치 않으면 패스 점수를 폭락시켜서 '직접 드리블(돌파)' 하도록 강제함!
+                                            score -= 5000; 
+                                        }
                                     }
                                 }
 
@@ -1540,11 +1557,31 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             } 
                             // 2️⃣ 파이널 서드 진입: 폭발적이고 세밀한 컷인 (발에 붙이는 드리블 속도 상향)
                             else if (isNearBox) {
-                                nextVx = dir * (pSpd / 100) * 2.2; // 기존 1.8 -> 2.2로 컷인 전진 속도 더욱 극대화
-                                nextVy = (p.y < 50) ? 1.8 : -1.8;  
-                                state.eventText = "⚡ 박스 진입 컷인!";
+                                // 🎯 파이널 서드 돌입! (동료가 없어서 직접 요리함)
+                                let distToBaseline = (p.team === leftTeam) ? (100 - p.x) : p.x;
+                                let isDeepCorner = distToBaseline < 8; // 코너킥 라인(엔드라인) 근처인지 확인
+                                
+                                // 내 앞길을 가로막는 수비수가 있는지 탐지
+                                let blockerAhead = forwardEnemies.find(e => Math.abs(e.y - p.y) < 6 && getDistance(p.x, p.y, e.x, e.y) < 10);
+                                
+                                if (isDeepCorner) {
+                                    // 1️⃣ 코너킥 라인까지 깊숙하게 다다랐다면, 골대를 향해 90도(직각)로 꺾어 들어가는 무자비한 엔드라인 돌파!
+                                    nextVx = dir * (pSpd / 100) * 0.5; // 앞으로 가는 건 거의 멈추고
+                                    nextVy = (p.y < 50) ? 2.8 : -2.8;  // 골대를 향해 수직으로 급격히 파고듦!
+                                    state.eventText = "⚡ 엔드라인 직각 돌파!";
+                                } else if (blockerAhead) {
+                                    // 2️⃣ 앞에 수비가 버티고 있다면, 박스 모서리 쪽(대각선)으로 날카롭게 컷인
+                                    nextVx = dir * (pSpd / 100) * 1.8; 
+                                    nextVy = (p.y < 50) ? 2.2 : -2.2;  
+                                    state.eventText = "⚡ 중앙 대각 컷인!";
+                                } else {
+                                    // 3️⃣ 앞이 뻥 뚫려있다면, 섣불리 꺾지 않고 코너 라인까지 더 깊숙이 일자 돌파 (수비 붕괴 목적)
+                                    nextVx = dir * (pSpd / 100) * 2.8; 
+                                    nextVy = (p.y < 50) ? 0.2 : -0.2; // 터치라인 밖으로 안 나가게 미세하게 안쪽으로만 유지
+                                    state.eventText = "💨 엔드라인 깊숙이 돌파!";
+                                }
                                 p.cooldown = 1; 
-                            } 
+                            }
                             // 3️⃣ 측면 빈 공간: 짧게 쳐놓고 미친 듯이 따라가는 치달
                             else if (nearestEnemyDist > 12) {
                                 nextVx = dir * (pSpd / 100) * 2.6; // 너무 멀리 차지 않게 강도 조절 (기존 3.8 -> 2.6)
