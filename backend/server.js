@@ -779,9 +779,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     else if (state.phase === 'goal_kick') {
                         if (p.team === state.possessionTeam) {
                             // 공격하는 팀 (골킥 받는 팀): 공을 받기 위해 키퍼 앞쪽으로 적당히 내려옴
-                            if (p.role === 'FW') { targetX = p.baseX - (dir * 6) + organicX; targetY = p.baseY; }
-                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 6) + organicX; targetY = p.baseY; }
-                            else { targetX = p.baseX - (dir * 5) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
+                            if (p.role === 'FW') { targetX = p.baseX + (dir * 8) + organicX; targetY = p.baseY; }
+                            else if (p.role === 'MF') { targetX = p.baseX + (dir * 11) + organicX; targetY = p.baseY; }
+                            else { targetX = p.baseX - (dir * 13) + organicX; targetY = p.baseY; } // 🎯 수비수는 장외 이탈 방지 및 키퍼 앞쪽 대기!
                         } else {
                             // 수비하는 팀 (상대 골킥 압박): 라인을 적당히 위로 올림
                             if (p.role === 'FW') { targetX = p.baseX + (dir * 25) + organicX; targetY = p.baseY; }
