@@ -1179,32 +1179,29 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let dx = p.x - other.x; let dy = p.y - other.y;
                             let d = Math.sqrt(dx*dx + dy*dy) || 1;
                             
-                            // 충돌 반경을 살짝 넓혀서 겹치기 전에 경합 판정 발동
-                            if (d < 1.1) { 
-                                if (p.team === other.team) {
-                                    // 같은 팀끼리 길막 방지 거리도 축소 (0.5 -> 0.3 / 1.5 -> 1.1)
-                                    let repelForce = (d < 0.3) ? 0.8 : 0.1;
-                                    let repel = (1.1 - d) * repelForce;
-                                    targetX += (dx / d) * repel; targetY += (dy / d) * repel;
-                                } else {
-                                    // 적팀과의 경합 (움찔거림의 주범이던 기본 밀어내기 로직 삭제)
+                            // 충돌 반경(1.2) 내에 들어오면 경합 시작
+                            if (d < 1.2) { 
+                                // 🚨 1. 아군/적군 무관하게 겹치면 서로 밀어내는 물리력(Repel) 기본 적용
+                                // x,y 좌표를 직접 뜯어고치지 않고, targetX를 밀어내어 자연스럽게 어깨싸움을 하며 미끄러지게 함
+                                let repelForce = (p.team === other.team) ? ((d < 0.3) ? 1.0 : 0.2) : 1.5;
+                                let repel = (1.2 - d) * repelForce;
+                                targetX += (dx / d) * repel; 
+                                targetY += (dy / d) * repel;
+
+                                if (p.team !== other.team) {
                                     if (p.duelCooldown <= 0 && other.duelCooldown <= 0) {
                                         let pHasBall = (ballCarrier && ballCarrier.id === p.id);
                                         let otherHasBall = (ballCarrier && ballCarrier.id === other.id);
 
                                         if (pHasBall || otherHasBall) {
-                                            // ★ 3초(30틱) 동안 재경합 절대 금지 (무한 비비기 차단)
-                                            p.duelCooldown = 30; 
-                                            other.duelCooldown = 30;
+                                            p.duelCooldown = 25; 
+                                            other.duelCooldown = 25;
                                             
                                             let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
                                             let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
-                                            
-                                            // 🎯 몸싸움/수비(def) 스탯 추가: 데이터베이스에 없으면 기본값 80 자동 부여
                                             let pDef = (p.stats && p.stats.def) ? p.stats.def : 80;
                                             let oDef = (other.stats && other.stats.def) ? other.stats.def : 80;
                                             
-                                            // 🎯 밸런스 최적화: 스피드 40% + 몸싸움(수비) 60% 비율로 합산하여 경합 점수 산정
                                             let pScore = (pSpeed * 0.3) + (pDef * 0.7) + (Math.random() * 30);
                                             let oScore = (oSpeed * 0.3) + (oDef * 0.7) + (Math.random() * 30);
 
@@ -1215,32 +1212,27 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                                 state.possessionTeam = 0; 
                                                 state.passTargetId = null; 
                                                 
+                                                // 🚨 2. p.x, p.y를 직접 조작하는 발작 원인 코드 완벽 삭제!
+                                                // 대신 스턴(비틀거림) 틱만 부여하여 밀어내기 관성에 의해 자연스레 밀리게 함
                                                 if (pHasBall) { 
                                                     p.cooldown = 5; p.stunTicks = 15; 
-                                                    p.x += (dx / d) * 3.0; p.y += (dy / d) * 3.0; // 확 밀쳐냄
                                                 } else { 
                                                     other.cooldown = 5; other.stunTicks = 15; 
-                                                    other.x -= (dx / d) * 3.0; other.y -= (dy / d) * 3.0;
                                                 }
                                             } else {
                                                 if (pScore > oScore) {
                                                     other.cooldown = 5; 
                                                     other.stunTicks = 15; 
-                                                    other.x -= (dx / d) * 3.0; 
-                                                    other.y -= (dy / d) * 3.0;
                                                     state.eventText = "⚡ 수비수를 벗겨냅니다!";
                                                 } else {
                                                     p.cooldown = 5; 
-                                                    p.stunTicks = 10; 
-                                                    p.x += (dx / d) * 2.5; p.y += (dy / d) * 2.5;
+                                                    p.stunTicks = 12; 
                                                     state.eventText = "🧱 수비벽 지연!";
                                                     state.ball.vx *= 0.5; state.ball.vy *= 0.5;
                                                 }
                                             }
                                         }
                                     }
-                                    // 주의: else (쿨타임 중일 때) 블록을 아예 삭제했습니다.
-                                    // 이제 쿨타임 중에 스치면 물리적으로 버벅거리지 않고 부드럽게 스쳐 지나갑니다.
                                 }
                             }
                         }
@@ -1274,11 +1266,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                 if (p.stunTicks && p.stunTicks > 0) {
                     p.stunTicks--;
-                    moveSpeed *= 0.3; // 30%의 속도로 비틀거림
-                    
-                    // 핵심: 공을 쫓아 돌진하는 것을 멈추고, 밸런스를 잡기 위해 자기 포메이션 자리로 방향을 잃고 물러남
-                    targetX = p.baseX; 
-                    targetY = p.baseY; 
+                    moveSpeed *= 0.2; // 🚨 속도를 20%로 낮춰서 확실한 비틀거림 표현
+                    // 🚨 [핵심 수정] 강제로 포메이션(baseX)으로 돌아가게 하던 코드 완전 삭제!
+                    // 위 물리 엔진에서 더해진 어깨싸움(Repel) 관성이 유지되므로,
+                    // 패배한 선수는 속도가 느려진 채로 상대방에게 밀려 뒤로 스르륵 밀려나게 됩니다.
                 }
 
                 let distToTarget = getDistance(p.x, p.y, targetX, targetY) || 1;
@@ -1766,68 +1757,63 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             // 🎯 전방에 빈 공간(수비수와의 거리)이 얼마나 있는지 계산
                             let forwardEnemies = state.players.filter(e => e.team !== p.team && e.role !== 'GK' && ((dir === 1 && e.x > p.x) || (dir === -1 && e.x < p.x)));
                             let nearestEnemyDist = forwardEnemies.length > 0 ? Math.min(...forwardEnemies.map(e => getDistance(p.x, p.y, e.x, e.y))) : 999;
+                            
+                            // 🚨 [추가] 앞을 가로막진 않아도 옆이나 뒤에서 바짝 붙은 수비수(5m 이내)가 있는지 360도 판별
+                            let closeEnemies = state.players.filter(e => e.team !== p.team && e.role !== 'GK' && getDistance(p.x, p.y, e.x, e.y) < 5.0);
+                            let hasCloseEnemy = closeEnemies.length > 0;
                         
-                            // 1️⃣ 퍼스트 터치: 패스를 받았거나 공이 빠르게 굴러오면 일단 발밑에 잡아둠 (소유권 확보)
                             if (currentBallSpeed > 1.5 && p.cooldown === 0) {
                                 nextVx = dir * (pSpd / 100) * 0.8; 
                                 nextVy = 0;
                                 p.cooldown = 1;
                                 state.eventText = "볼 터치 및 소유";
                             } 
-                            // 2️⃣ 파이널 서드 진입: 폭발적이고 세밀한 컷인 (발에 붙이는 드리블 속도 상향)
                             else if (isNearBox) {
-                                // 🎯 파이널 서드 돌입! (동료가 없어서 직접 요리함)
                                 let distToBaseline = (p.team === leftTeam) ? (100 - p.x) : p.x;
-                                
-                                // 🚨 꺾는 지점을 8에서 15로 늘려서 여유있게 박스 안으로 진입하도록 수정
                                 let isDeepCorner = distToBaseline < 15;
-                                
-                                // 내 앞길을 가로막는 수비수가 있는지 탐지
                                 let blockerAhead = forwardEnemies.find(e => Math.abs(e.y - p.y) < 6 && getDistance(p.x, p.y, e.x, e.y) < 10);
                                 
                                 if (distToBaseline < 5) {
-                                    // 🚨 [핵심 버그 수정] 라인 아웃 5m 직전! 전진을 완전히 멈추고 뒤로 살짝 접으면서 안쪽으로 꺾음
-                                    nextVx = dir * (pSpd / 100) * -0.5; // 오히려 뒤로 치면서 아웃 완벽 차단
+                                    nextVx = dir * (pSpd / 100) * -0.5; 
                                     nextVy = (p.y < 50) ? 2.5 : -2.5;
                                     state.eventText = "⚡ 라인 붕괴 컷백 드리블!";
+                                    p.cooldown = 1; 
                                 } else if (isDeepCorner) {
-                                    // 1️⃣ 코너킥 라인 근처: 전진 속도를 확 줄이고 박스 안을 향해 90도 컷인
-                                    nextVx = dir * (pSpd / 100) * 0.2; // 앞으로 밀고 나가는 힘 최소화
+                                    nextVx = dir * (pSpd / 100) * 0.2; 
                                     nextVy = (p.y < 50) ? 2.8 : -2.8;
                                     state.eventText = "⚡ 엔드라인 직각 파고들기!";
-                                } else if (blockerAhead) {
-                                    // 2️⃣ 앞에 수비가 버티고 있다면, 박스 모서리 쪽(대각선)으로 날카롭지만 '짧게' 컷인
-                                    nextVx = dir * (pSpd / 100) * 0.7; // 🚨 전진 힘을 확 빼서 짧은 터치로 꺾음 (1.5 -> 0.7)
-                                    nextVy = (p.y < 50) ? 1.6 : -1.6;  // 🚨 꺾임 폭 축소 (2.2 -> 1.6)
-                                    state.eventText = "⚡ 날카로운 컷인!";
-                                    p.cooldown = 1; // 쿨타임을 촘촘하게 가져감
+                                    p.cooldown = 1; 
+                                } else if (blockerAhead || hasCloseEnemy) {
+                                    // 🚨 [핵심 수정] 앞이나 '옆에' 수비가 바짝 붙어있다면, 볼을 몸에 완전 붙여서 잰걸음으로 대각 컷인!
+                                    nextVx = dir * (pSpd / 100) * 0.4; // 전진 힘을 극단적으로 빼서 짧은 터치로 꺾음 (0.7 -> 0.4)
+                                    nextVy = (p.y < 50) ? 1.2 : -1.2;  // 대각선 이동폭도 대폭 축소하여 뺏기지 않게 보호 (1.6 -> 1.2)
+                                    state.eventText = "⚡ 세밀한 컷인!";
+                                    p.cooldown = 0; // 🚨 터치 쿨타임 0! 매 틱마다 공을 건드려 소유권 유지
                                 } else {
-                                    // 3️⃣ 앞이 뻥 뚫려있을 때: 무지성 질주를 막기 위해 거리에 비례해 감속하며 서서히 박스를 조여감
-                                    let speedControl = Math.min(2.0, distToBaseline * 0.1); // 거리가 가까워질수록 자동으로 브레이크
+                                    let speedControl = Math.min(2.0, distToBaseline * 0.1); 
                                     nextVx = dir * (pSpd / 100) * speedControl; 
-                                    nextVy = (p.y < 50) ? 1.0 : -1.0; // 일직선이 아닌 대각선으로 서서히 박스 안쪽으로 밀고 들어감
+                                    nextVy = (p.y < 50) ? 1.0 : -1.0; 
                                     state.eventText = "💨 박스 진입!";
+                                    p.cooldown = 1; 
                                 }
-                                p.cooldown = 1; 
                             }
-                            // 3️⃣ 측면 빈 공간: 짧게 쳐놓고 미친 듯이 따라가는 치달
-                            else if (nearestEnemyDist > 12) {
-                                nextVx = dir * (pSpd / 100) * 2.3; // 🚨 치달 공 차는 강도(거리) 하향 (2.6 -> 2.3)
+                            // 3️⃣ 측면 빈 공간: 주변 12m 내에 수비가 아예 없을 때만 긴 치달 발동
+                            else if (nearestEnemyDist > 12 && !hasCloseEnemy) {
+                                nextVx = dir * (pSpd / 100) * 2.3; 
                                 nextVy = 0; 
                                 state.eventText = "💨 터치라인 치달!";
-                                p.cooldown = 2;
-                                
-                                // ★ 핵심 버그 해결: 공을 차고 나서도 선수가 스프린트 가속(1.8배속)을 받도록 플래그 강제 온!
+                                p.cooldown = 2; 
                                 p.isMakingRun = true; 
                             } 
-                            // 4️⃣ 수비가 바로 앞에 있을 때: 일반 돌파
+                            // 4️⃣ 수비가 바로 앞에 있거나 옆에 붙었을 때: 세밀한 키핑 모드
                             else {
-                                nextVx = dir * (pSpd / 100) * 1.4;
+                                // 🚨 [핵심 수정] 옆에 수비가 바짝 붙었으면 치고 나가지 않고 몸에 붙임
+                                let speedMult = hasCloseEnemy ? 0.6 : 1.4;
+                                nextVx = dir * (pSpd / 100) * speedMult;
                                 nextVy = 0;
-                                state.eventText = "측면 돌파";
-                                p.cooldown = 0;
+                                state.eventText = hasCloseEnemy ? "볼 키핑" : "측면 돌파";
+                                p.cooldown = 0; // 쿨타임 0으로 턴오버 차단
                             }
-                        }
                         // ★ 역습 및 단독 돌파 전용 움직임 (빈 공간으로 쇄도)
                         else if (isCounterDrive && !imminentThreat) {
                             nextVx = dir * (pSpd / 100) * 1.6; // 중앙을 가르는 폭발적인 직진 속도
@@ -1844,19 +1830,28 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             if (p.y < 15) dodgeDir = 1;
                             if (p.y > 85) dodgeDir = -1;
 
-                            nextVy = dodgeDir * 2.0; 
-                            // 🎯 수비를 회피할 때도 옆으로만 새지 않고 앞으로 치고 나가는 전진성 극대화
-                            nextVx = dir * (pSpd / 100) * (isCounterDrive ? 1.4 : 1.1); 
-                            state.eventText = wantsToHold ? "⚡회피!" : "회피!";
-                            p.cooldown = 0;
+                            nextVy = dodgeDir * 1.4; // 🚨 회피할 때도 공이 너무 멀리 가지 않도록 조절 (2.0 -> 1.4)
+                            // 🚨 수비가 바로 앞에 있을 땐 전진 폭을 대폭 축소하여 몸에 붙임
+                            nextVx = dir * (pSpd / 100) * (isCounterDrive ? 1.0 : 0.5); 
+                            state.eventText = wantsToHold ? "⚡ 짧은 회피 돌파!" : "세밀한 회피 기동!";
+                            p.cooldown = 0; // 터치 쿨타임 0 유지
                         } else {
-                            if (inFinalThird && Math.random() < (pSpd / 100) * 0.7) {
+                            // 🚨 [추가] 앞을 가로막지 않더라도 '옆이나 뒤에' 바짝 붙은 적이 있는지 360도 확인
+                            let isEnemyBeside = threats.some(e => getDistance(p.x, p.y, e.x, e.y) < 4.5);
+                            
+                            if (isEnemyBeside) {
+                                // 수비가 바짝 붙어있을 땐 무지성 직진 금지, 공을 짧게 지킴
+                                nextVx = dir * (pSpd / 100) * 0.6; 
+                                nextVy = centerDriveVy * 0.4; 
+                                state.eventText = "안전한 볼 키핑"; 
+                                p.cooldown = 0;
+                            } else if (inFinalThird && Math.random() < (pSpd / 100) * 0.7) {
                                 if (p.y < 25) nextVy = 1.8;
                                 else if (p.y > 75) nextVy = -1.8;
                                 else nextVy = centerDriveVy * 1.2;
 
                                 nextVx = dir * (pSpd / 100) * 1.3; 
-                                state.eventText = "공간 돌파!"; 
+                                state.eventText = "폭발적 공간 돌파!"; 
                                 p.cooldown = 1; 
                             } else {
                                 nextVx = dir * (pSpd / 100) * 1.0; 
