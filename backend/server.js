@@ -1402,37 +1402,52 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                     let isCounterAttack = (defendersAhead <= 3) && inAttackingHalf; // 수비가 적은 완벽한 역습 찬스
                     let isIsolatedFront = (teammatesAhead === 0) && inAttackingHalf; // 앞에 줄 곳이 없을 때 단독 찬스
 
+                    let closeEnemiesToMe = state.players.filter(e => e.team !== p.team && e.role !== 'GK' && getDistance(p.x, p.y, e.x, e.y) < 5.0);
+                    let isTrapped = closeEnemiesToMe.length > 0;
+
                     let canShoot = false;
                     let shootProb = 0;
+                    
+                    // 🎯 감아차기(Finesse Shot) 각도 조건 완화 및 확률 대폭 상향
+                    // Y축 8~38 사이, 거리 12~28m의 넓은 범위에서 감아차기 허용
+                    let isFinesseAngle = Math.abs(p.y - 50) > 8 && Math.abs(p.y - 50) < 38 && distToGoal > 12 && distToGoal < 28;
+                    let useFinesse = isFinesseAngle && Math.random() < (pSht > 80 ? 0.85 : 0.50); 
+                    
+                    // 🚨 감아차기를 쏠 거라면, 정면에 수비수(shotBlocked)가 있어도 허공으로 차서 우회할 수 있으므로 블락 무시!
+                    if (shotBlocked && useFinesse) shotBlocked = false;
 
                     if (!shotBlocked) {
-                        // 🎯 핵심: 페널티 박스 안이거나, 페널티 아크(거리 22 이하 & 정면)면 무조건 슈팅(1.0)
-                        if (inOpponentBox || (distToGoal <= 22 && angleToGoal < 20)) {
+                        if (inOpponentBox || (distToGoal <= 24 && angleToGoal < 25)) {
                             canShoot = true;
                             shootProb = 1.0; 
                         } else if (distToGoal < maxShotDist) {
                             if (angleToGoal < 20) {
                                 shootProb = (teammatesAhead === 0) ? 1.0 : 0.7; 
                                 canShoot = true;
-                            } else if (angleToGoal < 32) {
-                                shootProb = 0.4; 
+                            } else if (angleToGoal < 35) {
+                                shootProb = 0.5; 
                                 canShoot = true;
                             }
                         }
                     }
                     
+                    // 🚨 [핵심 기능] 박스 근처인데, 수비가 바짝 붙어있고(돌파 불가) 줄 곳도 마땅치 않으면 강제 기습 슈팅!
+                    if (distToGoal < 25 && isTrapped && teammatesAhead < 2) {
+                        canShoot = true;
+                        shootProb = 0.95; // 95% 확률로 억지 패스 대신 무조건 슛을 갈김
+                        if (isFinesseAngle) useFinesse = true; // 강제 슈팅 시 감아차기 각도면 무조건 감아차기 발동
+                    }
+
                     if (canShoot && Math.random() < shootProb) {
                         io.to(roomCode).emit('playSound', 'kick');
-                        // 🎯 윙어/공격수의 감아차기(Finesse Shot) 각도 및 조건 계산
-                        // 페널티 박스 좌우 측면 모서리(Y축 10~35 차이)에서, 거리 14~26m 사이일 때 발동
-                        let isFinesseAngle = Math.abs(p.y - 50) > 10 && Math.abs(p.y - 50) < 35 && distToGoal > 14 && distToGoal < 26;
-                        let useFinesse = isFinesseAngle && Math.random() < (pSht > 80 ? 0.6 : 0.3); // 슈팅 스탯 기반 확률
                         let dx, dy, d, power;
+                        
                         if (useFinesse) {
                             // 🌀 ZD 감아차기 궤적 계산
-                            power = 7.5 + ((pSht - 70) * 0.15); // 파워보단 정교한 궤적에 집중
-                            // 1. 타겟: 골대 바깥쪽 허공을 겨냥 (먼 포스트보다 16만큼 더 바깥쪽)
-                            let aimWideY = p.y < 50 ? 50 + 16 : 50 - 16; 
+                            power = 7.5 + ((pSht - 70) * 0.15); 
+                            
+                            // 1. 타겟: 수비를 피하기 위해 골대 바깥쪽 허공을 겨냥 (기존 16보다 더 바깥쪽인 20으로 상향)
+                            let aimWideY = p.y < 50 ? 50 + 20 : 50 - 20; 
                             dx = targetGoalX - p.x; 
                             dy = aimWideY - p.y; 
                             d = Math.sqrt(dx*dx + dy*dy) || 1; 
@@ -1440,12 +1455,10 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             state.ball.vx = (dx / d) * power; 
                             state.ball.vy = (dy / d) * power;
                             
-                            // 2. 커브: 허공을 향해 출발한 공을 골대 안쪽(50)으로 급격히 휘게 만듦
-                            // 위(왼쪽)에서 찼으면 아래쪽(+Y)으로 쏘고 다시 위쪽(-Y)으로 휨
-                            // 아래(오른쪽)에서 찼으면 위쪽(-Y)으로 쏘고 다시 아래쪽(+Y)으로 휨
-                            state.ball.curvePower = p.y < 50 ? -1.4 : 1.4;
-                            state.ball.shotTicks = 16; // 궤적이 그려질 충분한 체공 시간
-                            state.eventText = "✨ 환상적인 감아차기!";
+                            // 2. 커브: 허공을 향해 출발한 공을 골대 안쪽(50)으로 급격히 휘게 만듦 (커브 휨 수치 1.4 -> 1.7 상향)
+                            state.ball.curvePower = p.y < 50 ? -1.7 : 1.7;
+                            state.ball.shotTicks = 16; 
+                            state.eventText = "✨ 수비를 찢는 감아차기!";
                         }
                         else {
                             // 💥 일반 파워 슈팅
@@ -1457,7 +1470,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             dx = targetGoalX - p.x; dy = aimY - p.y; d = Math.sqrt(dx*dx + dy*dy) || 1; 
                             state.ball.vx = (dx / d) * power; state.ball.vy = (dy / d) * power;
                             state.ball.shotTicks = distToGoal < 15 ? 8 : 15;
-                            state.eventText = "⚽ 강력한 슈팅!";
+                            state.eventText = isTrapped ? "🔥 기습적인 슈팅!" : "⚽ 강력한 슈팅!";
                         }
                         p.cooldown = 15;
                         return; 
