@@ -1296,6 +1296,7 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                 let targetGoalX = (p.team === leftTeam) ? 100 : 0;
 
                 if (!isBallInAir && distToBallAct < touchRadius && p.cooldown <= 0 && state.phase === 'play') {
+                    let prevTouchTeam = state.lastTouchTeam; // 🚨 [추가] 방금 전까지 공을 만진 팀 확인 (백패스 판별용)
                     state.lastTouchTeam = p.team;
                     state.lastTouchPlayerName = p.name; 
                     state.ball.curvePower = 0; // 🎯 선수가 공을 터치하는 순간 궤적 초기화 (드리블 휨 방지)
@@ -1328,31 +1329,51 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                     if (p.role === 'GK') {
                         let isInBox = Math.abs(p.x - (p.team === leftTeam ? 0 : 100)) < 20 && p.y > 20 && p.y < 80;
+                        let isBackpass = (prevTouchTeam === p.team && state.ball.shotTicks <= 0); // 🚨 [추가] 우리 팀이 줬고 슈팅이 아니면 백패스로 간주
+
                         if (isInBox && state.phase === 'play' && state.setPieceTimer <= 0) {
-                            // 0.4는 40% 확률로 공을 쳐내고(루즈볼 유도), 60% 확률로 안전하게 잡는다는 뜻입니다.
-                            // 0.7로 바꾸면 70% 확률로 공을 쳐내서 루즈볼(세컨볼) 상황이 더 자주 발생해 박진감이 넘치게 됩니다.
-                            if (state.ball.shotTicks > 0 && Math.random() < 0.40) {
+                            if (isBackpass) {
+                                // 🚨 1️⃣ 백패스 시 룰에 따라 손으로 잡지 않고 하프라인 쪽으로 높게 걷어냄
                                 io.to(roomCode).emit('playSound', 'kick');
-                                // 🎯 펀칭 시 공이 튀는 강도를 대폭 줄여 페널티 박스 안쪽 루즈볼 상황 유도
-                                state.ball.vx = dir * (1.5 + Math.random() * 2.0); // 최대 7.0에서 3.5로 감소
-                                state.ball.vy = (Math.random() - 0.5) * 5.0; // 위아래로 튀는 범위도 반타작
+                                let targetX = 50 + (Math.random() - 0.5) * 15; // 하프라인 부근
+                                let targetY = 50 + (Math.random() - 0.5) * 40; 
+                                let dx = targetX - p.x; let dy = targetY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1;
+                                state.ball.vx = (dx / d) * 7.5; 
+                                state.ball.vy = (dy / d) * 7.5;
+                                state.ball.airTicks = Math.max(4, Math.floor(d / 4.5)); // 공중에 붕 뜨게 만듦
+                                state.ball.shotTicks = 0;
+                                p.cooldown = 15;
+                                state.eventText = "👟 걷어내기!";
+                            }
+                            else if (state.ball.shotTicks > 0 && Math.random() < 0.40) {
+                                // 2️⃣ 펀칭 (슈팅 방어 시)
+                                io.to(roomCode).emit('playSound', 'kick');
+                                state.ball.vx = dir * (1.5 + Math.random() * 2.0); 
+                                state.ball.vy = (Math.random() - 0.5) * 5.0; 
                                 state.ball.shotTicks = 0;
                                 p.cooldown = 5;
-                                state.eventText = "🧤 슈퍼 세이브 (펀칭)!";
+                                state.eventText = "🧤 슈퍼 세이브!";
                             }
                             else {
-                                // 안정적인 캐칭
+                                // 3️⃣ 안정적인 캐칭 (적의 패스나 슈팅)
                                 state.phase = 'gk_hold'; state.gkHolder = p; state.setPieceTimer = 15;
                                 state.ball.vx = 0; state.ball.vy = 0; state.ball.x = p.x; state.ball.y = p.y; 
-                                state.eventText = state.ball.shotTicks > 0 ? "🧤 엄청난 선방 (캐칭)!" : "키퍼 선방!"; 
+                                state.eventText = state.ball.shotTicks > 0 ? "🧤 골키퍼 캐칭!" : "키퍼 캐칭!"; 
                                 state.ball.shotTicks = 0;
                                 p.cooldown = 20;
-                                
-                                // 🎯 치명적 버그 픽스: 키퍼가 공을 잡는 순간 소유권을 수비팀(키퍼팀)으로 즉시 가져옵니다!
                                 state.possessionTeam = p.team;
                             }
                         } else {
-                            io.to(roomCode).emit('playSound', 'kick'); state.ball.vx = dir * 6.0; state.ball.vy = (p.y > 50) ? 3.0 : -3.0; p.cooldown = 15;
+                            // 🚨 박스 밖일 경우: 무조건 걷어냄 (단순 방향이 아닌 하프라인 쪽으로 정확히 걷어내도록 개선)
+                            io.to(roomCode).emit('playSound', 'kick'); 
+                            let targetX = 50 + (Math.random() - 0.5) * 15;
+                            let targetY = 50 + (Math.random() - 0.5) * 40;
+                            let dx = targetX - p.x; let dy = targetY - p.y; let d = Math.sqrt(dx*dx + dy*dy) || 1;
+                            state.ball.vx = (dx / d) * 6.5; 
+                            state.ball.vy = (dy / d) * 6.5; 
+                            state.ball.airTicks = Math.max(3, Math.floor(d / 5.0));
+                            p.cooldown = 15;
+                            state.eventText = "👟 클리어링!";
                         }
                         return;
                     }
