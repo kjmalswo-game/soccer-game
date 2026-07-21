@@ -1194,8 +1194,9 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                         let otherHasBall = (ballCarrier && ballCarrier.id === other.id);
 
                                         if (pHasBall || otherHasBall) {
-                                            p.duelCooldown = 25; 
-                                            other.duelCooldown = 25;
+                                            // 🚨 교착 상태 해결 1: 무적(쿨다운) 시간을 25틱(2.5초)에서 15틱(1.5초)으로 줄여 경합을 더 자주 시도하게 함
+                                            p.duelCooldown = 15; 
+                                            other.duelCooldown = 15;
                                             
                                             let pSpeed = (p.stats && p.stats.spd) ? p.stats.spd : 80;
                                             let oSpeed = (other.stats && other.stats.spd) ? other.stats.spd : 80;
@@ -1206,29 +1207,27 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                             let oScore = (oSpeed * 0.3) + (oDef * 0.7) + (Math.random() * 30);
 
                                             if (Math.random() < 0.20 || (oScore > pScore + 10 && !pHasBall)) {
-                                                state.ball.vx = (Math.random() - 0.5) * 6; 
-                                                state.ball.vy = (Math.random() - 0.5) * 6;
+                                                state.ball.vx = (Math.random() - 0.5) * 7.5; // 루즈볼 스피드 상향
+                                                state.ball.vy = (Math.random() - 0.5) * 7.5;
                                                 state.eventText = "⚔️ 태클 탈취 턴오버!";
                                                 state.possessionTeam = 0; 
                                                 state.passTargetId = null; 
                                                 
-                                                // 🚨 2. p.x, p.y를 직접 조작하는 발작 원인 코드 완벽 삭제!
-                                                // 대신 스턴(비틀거림) 틱만 부여하여 밀어내기 관성에 의해 자연스레 밀리게 함
                                                 if (pHasBall) { 
-                                                    p.cooldown = 5; p.stunTicks = 15; 
+                                                    p.cooldown = 5; p.stunTicks = 12; 
                                                 } else { 
-                                                    other.cooldown = 5; other.stunTicks = 15; 
+                                                    other.cooldown = 5; other.stunTicks = 12; 
                                                 }
                                             } else {
                                                 if (pScore > oScore) {
                                                     other.cooldown = 5; 
-                                                    other.stunTicks = 15; 
+                                                    other.stunTicks = 12; 
                                                     state.eventText = "⚡ 수비수를 벗겨냅니다!";
                                                 } else {
                                                     p.cooldown = 5; 
-                                                    p.stunTicks = 12; 
+                                                    p.stunTicks = 10; 
                                                     state.eventText = "🧱 수비벽 지연!";
-                                                    state.ball.vx *= 0.5; state.ball.vy *= 0.5;
+                                                    state.ball.vx *= 0.3; state.ball.vy *= 0.3;
                                                 }
                                             }
                                         }
@@ -1266,10 +1265,17 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
 
                 if (p.stunTicks && p.stunTicks > 0) {
                     p.stunTicks--;
-                    moveSpeed *= 0.2; // 🚨 속도를 20%로 낮춰서 확실한 비틀거림 표현
-                    // 🚨 [핵심 수정] 강제로 포메이션(baseX)으로 돌아가게 하던 코드 완전 삭제!
-                    // 위 물리 엔진에서 더해진 어깨싸움(Repel) 관성이 유지되므로,
-                    // 패배한 선수는 속도가 느려진 채로 상대방에게 밀려 뒤로 스르륵 밀려나게 됩니다.
+                    moveSpeed *= 0.6; // 🚨 속도를 어느 정도 살려둬서 확실하게 뒤로 튕겨나가게 함
+                    
+                    // 🚨 [교착 상태 완벽 해결] 스턴(태클 패배/지연) 시 공을 쫓는 걸 완전히 포기하고,
+                    // 공의 반대 방향으로 중심을 잃고 튕겨나가게(뒷걸음질 치게) 만듦!
+                    let bDx = p.x - state.ball.x; 
+                    let bDy = p.y - state.ball.y;
+                    let bDist = Math.sqrt(bDx*bDx + bDy*bDy) || 1;
+                    
+                    // 현재 위치에서 공의 반대 방향으로 목표점 강제 설정
+                    targetX = p.x + (bDx / bDist) * 3.0; 
+                    targetY = p.y + (bDy / bDist) * 3.0; 
                 }
 
                 let distToTarget = getDistance(p.x, p.y, targetX, targetY) || 1;
