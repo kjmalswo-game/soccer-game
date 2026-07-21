@@ -1478,20 +1478,24 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             let forwardDist = (p.team === leftTeam) ? (m.x - p.x) : (p.x - m.x); 
                             let laneBlocked = false;
                             let minEnemyDistToM = Infinity;
-                            let enemiesNearReceiver = 0; // 🎯 동료 주변 8m 반경 내 수비수 밀집도 카운트
+                            let enemiesNearReceiver = 0; 
+                            let isTightlyMarked = false; // 🚨 [추가] 바짝 붙은 전담 마크맨 유무 판별
                             
                             state.players.forEach(e => {
                                 if (e.team !== p.team && e.role !== 'GK') {
-                                    // 🚨 패스 길목 차단 판정 너비를 확장 (3.0 -> 4.5)하여 중앙 헌납 차단
                                     if (pDistance(e.x, e.y, p.x, p.y, m.x, m.y) < 4.5) laneBlocked = true;
                                     let d2 = getDistance(m.x, m.y, e.x, e.y);
                                     if (d2 < minEnemyDistToM) minEnemyDistToM = d2;
                                     if (d2 < 8.0) enemiesNearReceiver++; 
+                                    if (d2 < 3.5) isTightlyMarked = true; // 🚨 3.5m 이내에 수비가 있으면 밀착 마크로 간주!
                                 }
                             });
 
                             let score = 0; let isThrough = false; let isCutback = false; let isCross = false;
-                            if (laneBlocked) score -= 3000; 
+                            
+                            // 🚨 밀착 마크 중이거나 길목이 막혔다면 점수에 엄청난 페널티 부여
+                            if (laneBlocked) score -= 4000; 
+                            if (isTightlyMarked) score -= 9000; // 🚨 밀착 마크 중인 동료에게는 억지 패스 절대 금지!
 
                             let isWingerPos = p.y < 22 || p.y > 78; 
                             let isReceiverCentral = m.y > 30 && m.y < 70; 
@@ -1507,16 +1511,17 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                 if (isWingerPos && isReceiverInBox) {
                                     score -= 9999; 
                                 } else if (isWingerPos && isReceiverCentral) {
-                                    // 🚨 하프라인/빌드업 지역에서 윙어가 중앙으로 패스할 때 수비가 1명이라도 붙어있으면 절대 안 줌!
                                     if (enemiesNearReceiver >= 1) {
                                         score -= 7000; 
                                     } else if (minEnemyDistToM < 8.0) {
-                                        score -= 4000; // 빈 공간이 확실하지 않으면 무리한 중앙 패스 보류
+                                        score -= 4000; 
                                     }
-                                } else if (enemiesNearReceiver >= 3) {
-                                    score -= 6000; 
-                                } else if (minEnemyDistToM < 4.5 && !m.isMakingRun) {
-                                    score -= 3500; 
+                                } else if (enemiesNearReceiver >= 2) { 
+                                    // 🚨 밀집 기준 강화 (3명 -> 2명 이상이면 웬만해선 패스 안 함)
+                                    score -= 8000; 
+                                } else if (minEnemyDistToM < 5.5 && !m.isMakingRun) { 
+                                    // 🚨 제자리에 있는데 5.5m 내에 적이 접근 중이면 패스 포기
+                                    score -= 4000; 
                                 }
                             }
 
@@ -1542,16 +1547,13 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     if (isDeepZone) {
                                         if (isReceiverInBox) {
                                             // 🚨 [진보된 필터링] 공격수 마크 상황을 체크하여 크로스의 '질(Quality)'을 평가
-                                            if (laneBlocked || enemiesNearReceiver >= 2) {
-                                                // 1️⃣ 길목이 막혔거나 타겟 주변에 수비가 2명 이상이면 공중볼을 뺏길 확률이 높으므로 절대 안 올림!
-                                                // 점수를 폭락(-5000)시켜 윙어가 직접 박스 안으로 파고드는 '컷인 드리블'을 강제함
+                                            if (laneBlocked || isTightlyMarked || enemiesNearReceiver >= 2) {
+                                                // 1️⃣ 길목이 막혔거나, 타겟이 밀착 마크 중이거나, 주변에 수비가 2명 이상이면 크로스 포기!
                                                 score -= 5000; 
                                             } else if (enemiesNearReceiver === 1) {
-                                                // 2️⃣ 1대1 경합 상황이면 크로스 가산점을 대폭 줄여서(1500), 확실한 패스나 돌파 각이 없을 때 차선책으로만 올림
                                                 score += 1500;
                                                 isCross = true;
                                             } else {
-                                                // 3️⃣ 타겟이 완벽히 비어있는 노마크 찬스일 때만 확실하게 4000점짜리 킬러 크로스 배달!
                                                 score += 4000; 
                                                 isCross = true;
                                             }
