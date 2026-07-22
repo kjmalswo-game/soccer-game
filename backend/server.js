@@ -678,11 +678,21 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             
                             if(target) {
                                 let dist = getDistance(state.ball.x, state.ball.y, target.x, target.y) || 1;
-                                state.ball.vx = ((target.x - state.ball.x) / dist) * 2.5; state.ball.vy = ((target.y - state.ball.y) / dist) * 2.5; // 🎯 스로인 강도 하향
+                                state.ball.vx = ((target.x - state.ball.x) / dist) * 2.5; state.ball.vy = ((target.y - state.ball.y) / dist) * 2.5; 
                                 state.passTargetId = target.id;
                                 state.lastPasserId = state.throwerId; 
-                                if (dist > 15) { state.ball.airTicks = Math.max(2, Math.floor(dist / 2.2)); state.eventText = "🙌 롱 스로인!"; }
-                            } else { state.ball.vx = dir * 2.5; state.ball.vy = 0; }
+                                
+                                // 🚨 1. 안전장치: 짧은 스로인일 때도 바닥으로 안 굴러가고 공중으로 뜨도록 airTicks 기본값 2 부여
+                                state.ball.airTicks = dist > 15 ? Math.max(2, Math.floor(dist / 2.2)) : 2; 
+                                if (dist > 15) state.eventText = "🙌 롱 스로인!";
+                            } else { 
+                                state.ball.vx = dir * 2.5; state.ball.vy = 0; 
+                                state.ball.airTicks = 2;
+                            }
+                            
+                            // 🚨 2. 핵심 수정: 공을 던진 직후, 던진 본인에게 쿨타임을 다시 덮어씌워 방금 던진 공을 자기가 터치하는 버그 차단
+                            let thrower = state.players.find(p => p.id === state.throwerId);
+                            if (thrower) thrower.cooldown = 15;
                         }
                         else if (state.phase === 'corner') {
                             let targetX = (state.possessionTeam === leftTeam) ? 90 : 10;
@@ -1580,9 +1590,14 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                                     let isDeepZone = (p.team === leftTeam && p.x > 80) || (p.team === rightTeam && p.x < 20);
                                     if (isDeepZone) {
                                         if (isReceiverInBox) {
-                                            // 🚨 [진보된 필터링] 공격수 마크 상황을 체크하여 크로스의 '질(Quality)'을 평가
-                                            if (laneBlocked || isTightlyMarked || enemiesNearReceiver >= 2) {
-                                                // 1️⃣ 길목이 막혔거나, 타겟이 밀착 마크 중이거나, 주변에 수비가 2명 이상이면 크로스 포기!
+                                            // 🚨 [추가] 동료가 실제로 골대 앞으로 쇄도(isMakingRun) 중이거나 이미 깊숙한 곳에 도달했는지 확인
+                                            let isDeepReceiver = (p.team === leftTeam ? m.x > 86 : m.x < 14);
+                                            let isGoodCrossTarget = isDeepReceiver || m.isMakingRun;
+
+                                            if (!isGoodCrossTarget) {
+                                                // 🚨 동료가 박스 안이긴 하지만 멀뚱멀뚱 멈춰있다면, 아무도 없는 곳에 크로스를 날리지 않도록 강제 포기시킴
+                                                score -= 5000;
+                                            } else if (laneBlocked || isTightlyMarked || enemiesNearReceiver >= 2) {
                                                 score -= 5000; 
                                             } else if (enemiesNearReceiver === 1) {
                                                 score += 1500;
@@ -1740,13 +1755,18 @@ function startMatchPhase(roomCode, isSecondHalf = false) {
                             targetX = bestOption.mate.x; targetY = bestOption.mate.y; 
                             bestOption.isThrough = false; bestOption.isCross = false;
                         } else if (bestOption.isCross) { 
-                            // 🚨 [추가] 핀포인트 크로스를 넘어, 센터백과 키퍼 사이의 '침투(러닝 슛) 공간'으로 올리는 치명적인 크로스 궤적!
-                            targetX = targetGoalX - (dir * 6.0); // 골키퍼(-2)와 센터백(-10) 사이의 완벽한 틈새 공간
-                            
+                            // 🚨 허공 크로스 완벽 방지: 타겟 동료의 위치에 따라 크로스 낙하지점 유동적 조정
+                            let isDeepReceiver = (p.team === leftTeam ? bestOption.mate.x > 86 : bestOption.mate.x < 14);
+                            if (isDeepReceiver) {
+                                // 1️⃣ 이미 동료가 깊숙한 곳에 자리 잡고 있다면, 허공이 아닌 그 선수 앞쪽(발밑/머리)으로 핀포인트 배달
+                                targetX = bestOption.mate.x + (dir * 1.5);
+                            } else {
+                                // 2️⃣ 쇄도(침투) 중이라면, 기존처럼 센터백과 키퍼 사이의 가장 치명적인 공간으로 리드 크로스
+                                targetX = targetGoalX - (dir * 6.0);
+                            }
                             // 크로스를 받는 선수의 동선을 예측하여 빈 공간으로 리드 패스
                             let crossLeadY = (bestOption.mate.y - p.y) * 0.4;
                             targetY = bestOption.mate.y + crossLeadY;
-                            
                             // 타겟이 너무 벗어나지 않도록 페널티 박스 안쪽 폭으로 제한
                             targetY = Math.max(22, Math.min(78, targetY));
                         } else if (bestOption.isThrough) { 
